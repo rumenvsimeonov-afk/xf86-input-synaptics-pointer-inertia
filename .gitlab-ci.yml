@@ -59,21 +59,6 @@ check-commits:
     reports:
       junit: results.xml
 
-#
-# Verify that the merge request has the allow-collaboration checkbox ticked
-#
-check-merge-request:
-  extends:
-    - .fdo.ci-fairy
-  stage: deploy
-  script:
-    - ci-fairy check-merge-request --require-allow-collaboration --junit-xml=results.xml
-  artifacts:
-    when: on_failure
-    reports:
-      junit: results.xml
-  allow_failure: true
-
 
 #
 # Build a container with the given tag and the packages pre-installed.
