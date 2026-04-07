@@ -933,7 +933,7 @@ SynapticsPreInit(InputDriverPtr drv, InputInfoPtr pInfo, int flags)
     if (priv->comm.buffer)
         XisbFree(priv->comm.buffer);
     free(priv->proto_data);
-    free(priv->timer);
+    TimerFree(priv->timer);
     free(priv);
     pInfo->private = NULL;
     return BadAlloc;
@@ -948,7 +948,7 @@ SynapticsUnInit(InputDriverPtr drv, InputInfoPtr pInfo, int flags)
     SynapticsPrivate *priv = ((SynapticsPrivate *) pInfo->private);
 
     if (priv && priv->timer)
-        free(priv->timer);
+        TimerFree(priv->timer);
     if (priv && priv->proto_data)
         free(priv->proto_data);
     if (priv && priv->scroll_events_mask)
