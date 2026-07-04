@@ -34,6 +34,7 @@ ltsugar.m4
 ltversion.m4
 Makefile
 Makefile.in
+.build-pointer-inertia/
 mdate-sh
 missing
 mkinstalldirs
