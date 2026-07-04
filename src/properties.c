@@ -93,6 +93,11 @@ Atom prop_area = 0;
 Atom prop_softbutton_areas = 0;
 Atom prop_secondary_softbutton_areas = 0;
 Atom prop_noise_cancellation = 0;
+Atom prop_pointer_inertia = 0;
+Atom prop_pointer_inertia_motion = 0;
+Atom prop_pointer_inertia_timing = 0;
+Atom prop_pointer_inertia_sampling = 0;
+Atom prop_pointer_inertia_debug = 0;
 Atom prop_product_id = 0;
 Atom prop_device_node = 0;
 
@@ -201,7 +206,7 @@ InitDeviceProperties(InputInfoPtr pInfo)
     SynapticsPrivate *priv = (SynapticsPrivate *) pInfo->private;
     SynapticsParameters *para = &priv->synpara;
     int values[9];              /* we never have more than 9 values in an atom */
-    float fvalues[4];           /* never have more than 4 float values */
+    float fvalues[6];           /* pointer inertia has the largest float property */
 
     float_type = XIGetKnownProperty(XATOM_FLOAT);
     if (!float_type) {
@@ -381,6 +386,39 @@ InitDeviceProperties(InputInfoPtr pInfo)
     prop_noise_cancellation = InitAtom(pInfo->dev,
                                        SYNAPTICS_PROP_NOISE_CANCELLATION, 32, 2,
                                        values);
+
+    prop_pointer_inertia =
+        InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA, 8, 1,
+                 &para->pointer_inertia);
+
+    fvalues[0] = para->pointer_inertia_min_velocity;
+    fvalues[1] = para->pointer_inertia_start_multiplier;
+    fvalues[2] = para->pointer_inertia_decay_time;
+    fvalues[3] = para->pointer_inertia_stop_velocity;
+    fvalues[4] = para->pointer_inertia_min_distance;
+    fvalues[5] = para->pointer_inertia_lift_tail_ratio;
+    prop_pointer_inertia_motion =
+        InitFloatAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_MOTION, 6,
+                      fvalues);
+
+    values[0] = para->pointer_inertia_min_touch_time;
+    values[1] = para->pointer_inertia_velocity_stale_time;
+    values[2] = para->pointer_inertia_stop_touch_time;
+    values[3] = para->pointer_inertia_retouch_arm_time;
+    values[4] = para->pointer_inertia_max_duration;
+    prop_pointer_inertia_timing =
+        InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_TIMING, 32, 5,
+                 values);
+
+    values[0] = para->pointer_inertia_velocity_samples;
+    values[1] = para->pointer_inertia_tail_samples;
+    prop_pointer_inertia_sampling =
+        InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_SAMPLING, 32, 2,
+                 values);
+
+    prop_pointer_inertia_debug =
+        InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_DEBUG, 8, 1,
+                 &para->pointer_inertia_debug);
 
     /* only init product_id property if we actually know them */
     if (priv->id_vendor || priv->id_product) {
@@ -812,6 +850,87 @@ SetProperty(DeviceIntPtr dev, Atom property, XIPropertyValuePtr prop,
             return BadValue;
         para->hyst_x = hyst[0];
         para->hyst_y = hyst[1];
+    }
+    else if (property == prop_pointer_inertia) {
+        CARD8 enabled;
+
+        if (prop->size != 1 || prop->format != 8 || prop->type != XA_INTEGER)
+            return BadMatch;
+
+        enabled = *(CARD8 *) prop->data;
+        if (enabled > 1)
+            return BadValue;
+
+        para->pointer_inertia = enabled;
+        if (!checkonly && !enabled) {
+            priv->pointer_inertia.active = FALSE;
+            priv->pointer_inertia.tracking = FALSE;
+            priv->pointer_inertia.touch_state = POINTER_INERTIA_TOUCH_NONE;
+        }
+    }
+    else if (property == prop_pointer_inertia_motion) {
+        float *motion;
+
+        if (prop->size != 6 || prop->format != 32 || prop->type != float_type)
+            return BadMatch;
+
+        motion = (float *) prop->data;
+        if (motion[0] < 0.0 || motion[1] < 0.1 || motion[1] > 5.0 ||
+            motion[2] <= 0.0 || motion[3] < 0.0 || motion[4] < 0.0 ||
+            motion[5] < 0.0 || motion[5] > 1.0)
+            return BadValue;
+
+        para->pointer_inertia_min_velocity = motion[0];
+        para->pointer_inertia_start_multiplier = motion[1];
+        para->pointer_inertia_decay_time = motion[2];
+        para->pointer_inertia_stop_velocity = motion[3];
+        para->pointer_inertia_min_distance = motion[4];
+        para->pointer_inertia_lift_tail_ratio = motion[5];
+    }
+    else if (property == prop_pointer_inertia_timing) {
+        INT32 *timing;
+
+        if (prop->size != 5 || prop->format != 32 || prop->type != XA_INTEGER)
+            return BadMatch;
+
+        timing = (INT32 *) prop->data;
+        if (timing[0] < 0 || timing[1] <= 0 || timing[2] <= 0 ||
+            timing[3] < 0 || timing[4] < 0)
+            return BadValue;
+
+        para->pointer_inertia_min_touch_time = timing[0];
+        para->pointer_inertia_velocity_stale_time = timing[1];
+        para->pointer_inertia_stop_touch_time = timing[2];
+        para->pointer_inertia_retouch_arm_time = timing[3];
+        para->pointer_inertia_max_duration = timing[4];
+    }
+    else if (property == prop_pointer_inertia_sampling) {
+        INT32 *sampling;
+
+        if (prop->size != 2 || prop->format != 32 || prop->type != XA_INTEGER)
+            return BadMatch;
+
+        sampling = (INT32 *) prop->data;
+        if (sampling[0] < 2 ||
+            sampling[0] > SYNAPTICS_POINTER_INERTIA_HISTORY ||
+            sampling[1] < 0 ||
+            sampling[0] + sampling[1] > SYNAPTICS_POINTER_INERTIA_HISTORY)
+            return BadValue;
+
+        para->pointer_inertia_velocity_samples = sampling[0];
+        para->pointer_inertia_tail_samples = sampling[1];
+    }
+    else if (property == prop_pointer_inertia_debug) {
+        CARD8 enabled;
+
+        if (prop->size != 1 || prop->format != 8 || prop->type != XA_INTEGER)
+            return BadMatch;
+
+        enabled = *(CARD8 *) prop->data;
+        if (enabled > 1)
+            return BadValue;
+
+        para->pointer_inertia_debug = enabled;
     }
     else if (property == prop_product_id || property == prop_device_node)
         return BadValue;        /* read-only */

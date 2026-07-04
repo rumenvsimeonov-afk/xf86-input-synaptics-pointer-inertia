@@ -1,6 +1,37 @@
 Synaptics touchpad driver for X.Org
 -----------------------------------
 
+Pointer inertia extension
+-------------------------
+
+This fork adds optional inertial pointer motion to the X.Org Synaptics
+touchpad driver. The original driver behavior is unchanged unless the
+`PointerInertia` option or the `Synaptics Pointer Inertia` XInput property is
+enabled.
+
+The extension includes:
+
+* release velocity estimation from a dedicated motion history;
+* lift-tail filtering;
+* time-based exponential decay with fractional X/Y accumulation;
+* suppression after clicks, drags, scrolling, and multitouch;
+* confirmed retouch handling that cannot generate a tap or click;
+* continued movement with the same finger after a confirmed inertia stop;
+* visible-pointer feedback to stop blocked motion at screen edges;
+* runtime configuration through `xinput set-prop`.
+
+See [POINTER-INERTIA.md](POINTER-INERTIA.md) for build instructions, property
+descriptions, examples, and safety notes.
+
+The pointer inertia extension was implemented by OpenAI Codex at the request
+of Rumen V. Simeonov, who defined the required behavior and performed
+practical testing on Dell touchpad hardware. The implementation of the
+extension is Codex's work; the underlying Synaptics driver remains the work of
+its original X.Org contributors under the MIT license.
+
+This extension is experimental and currently targets X.Org sessions. It does
+not add pointer inertia to libinput or Wayland.
+
 FAQ
 ---
 
@@ -141,4 +172,3 @@ Please submit bug reports and requests to merge patches there.
 For patch submission instructions, see:
 
   https://www.x.org/wiki/Development/Documentation/SubmittingPatches
-

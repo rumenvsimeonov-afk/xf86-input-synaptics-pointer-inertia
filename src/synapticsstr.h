@@ -44,6 +44,7 @@
  *					structs, typedefs, #defines, enums
  *****************************************************************************/
 #define SYNAPTICS_MOVE_HISTORY	5
+#define SYNAPTICS_POINTER_INERTIA_HISTORY 100
 #define SYNAPTICS_MAX_TOUCHES	10
 #define SYN_MAX_BUTTONS 12      /* Max number of mouse buttons */
 
@@ -98,6 +99,12 @@ enum FingerState {              /* Note! The order matters. Compared with < oper
 enum MovingState {
     MS_FALSE,
     MS_TOUCHPAD_RELATIVE,
+};
+
+enum PointerInertiaTouchState {
+    POINTER_INERTIA_TOUCH_NONE,
+    POINTER_INERTIA_TOUCH_PENDING,
+    POINTER_INERTIA_TOUCH_HANDOFF,
 };
 
 enum MidButtonEmulation {
@@ -219,6 +226,22 @@ typedef struct _SynapticsParameters {
     int hyst_x, hyst_y;         /* x and y width of hysteresis box */
 
     int maxDeltaMM;               /* maximum delta movement (vector length) in mm */
+
+    Bool pointer_inertia;        /* Enable pointer inertia after finger release */
+    double pointer_inertia_min_velocity; /* Minimum release velocity in mm/s */
+    double pointer_inertia_start_multiplier; /* Release velocity multiplier */
+    double pointer_inertia_decay_time; /* Exponential decay time constant in ms */
+    double pointer_inertia_stop_velocity; /* Stop threshold in mm/s */
+    double pointer_inertia_min_distance; /* Minimum touch travel in mm */
+    double pointer_inertia_lift_tail_ratio; /* Slow lift-tail trim ratio */
+    int pointer_inertia_min_touch_time; /* Minimum touch duration in ms */
+    int pointer_inertia_velocity_stale_time; /* Maximum release sample age in ms */
+    int pointer_inertia_stop_touch_time; /* Touch duration required to stop inertia */
+    int pointer_inertia_retouch_arm_time; /* Delay before a retouch may stop inertia */
+    int pointer_inertia_max_duration; /* Maximum inertia duration in ms, 0 is unlimited */
+    int pointer_inertia_velocity_samples; /* Samples used for release velocity */
+    int pointer_inertia_tail_samples; /* Samples checked for lift slowdown */
+    Bool pointer_inertia_debug; /* Log start, reject, and stop decisions */
 } SynapticsParameters;
 
 struct _SynapticsPrivateRec {
@@ -241,6 +264,36 @@ struct _SynapticsPrivateRec {
     int hist_index;             /* Last added entry in move_hist[] */
     int hyst_center_x;          /* center x of hysteresis */
     int hyst_center_y;          /* center y of hysteresis */
+    struct {
+        SynapticsMoveHistRec history[SYNAPTICS_POINTER_INERTIA_HISTORY];
+        int history_pos;        /* Next insertion position */
+        int history_count;
+        double total_distance;  /* Touch travel in mm */
+        CARD32 touch_start_millis;
+        CARD32 last_sample_millis;
+        Bool tracking;
+        Bool eligible;
+        Bool disqualified;
+        Bool active;
+        double velocity_x;      /* Touchpad coordinate units per second */
+        double velocity_y;
+        double remainder_x;
+        double remainder_y;
+        CARD32 started_millis;
+        CARD32 last_tick_millis;
+        CARD32 released_millis;
+        enum PointerInertiaTouchState touch_state;
+        CARD32 stop_touch_started_millis;
+        int stop_touch_x;
+        int stop_touch_y;
+        int last_emitted_dx;
+        int last_emitted_dy;
+        int sprite_x;
+        int sprite_y;
+        int blocked_x_ticks;
+        int blocked_y_ticks;
+        Bool sprite_valid;
+    } pointer_inertia;
     struct {
         int last_x;             /* last x-scroll position */
         int last_y;             /* last y-scroll position */

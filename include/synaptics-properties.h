@@ -158,4 +158,21 @@
 /* 32 Bit Integer, 2 values, horizontal hysteresis, vertical hysteresis */
 #define SYNAPTICS_PROP_NOISE_CANCELLATION "Synaptics Noise Cancellation"
 
+/* 8 bit (BOOL, 1 value): pointer inertia enabled */
+#define SYNAPTICS_PROP_POINTER_INERTIA "Synaptics Pointer Inertia"
+
+/* 32 bit (FLOAT, 6 values): min velocity, start multiplier, decay time,
+ * stop velocity, min distance, lift-tail ratio */
+#define SYNAPTICS_PROP_POINTER_INERTIA_MOTION "Synaptics Pointer Inertia Motion"
+
+/* 32 bit (INTEGER, 5 values): min touch, velocity stale, stop touch,
+ * retouch arm and max duration times, all in milliseconds */
+#define SYNAPTICS_PROP_POINTER_INERTIA_TIMING "Synaptics Pointer Inertia Timing"
+
+/* 32 bit (INTEGER, 2 values): velocity and lift-tail sample counts */
+#define SYNAPTICS_PROP_POINTER_INERTIA_SAMPLING "Synaptics Pointer Inertia Sampling"
+
+/* 8 bit (BOOL, 1 value): pointer inertia decision logging */
+#define SYNAPTICS_PROP_POINTER_INERTIA_DEBUG "Synaptics Pointer Inertia Debug"
+
 #endif                          /* _SYNAPTICS_PROPERTIES_H_ */

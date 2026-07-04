@@ -426,6 +426,86 @@ Number of scrolls/second² to decrease the coasting speed.
 Default is 50.
 Property: "Synaptics Coasting Speed"
 .TP
+.BI "Option \*qPointerInertia\*q \*q" boolean \*q
+Enable inertial pointer motion after a qualifying one-finger movement.
+The default is false, which preserves the original driver behavior.
+Property: "Synaptics Pointer Inertia"
+.TP
+.BI "Option \*qPointerInertiaMinVelocity\*q \*q" float \*q
+Minimum release velocity in mm/s required to start pointer inertia.
+The default is 7.7.
+Property: "Synaptics Pointer Inertia Motion"
+.TP
+.BI "Option \*qPointerInertiaStartMultiplier\*q \*q" float \*q
+Multiplier applied to the estimated release velocity.
+The default is 1.3.
+Property: "Synaptics Pointer Inertia Motion"
+.TP
+.BI "Option \*qPointerInertiaDecayTime\*q \*q" float \*q
+Exponential velocity decay time constant in milliseconds.
+Larger values produce longer inertia.
+The default is 1658.
+Property: "Synaptics Pointer Inertia Motion"
+.TP
+.BI "Option \*qPointerInertiaStopVelocity\*q \*q" float \*q
+Velocity in mm/s below which pointer inertia stops.
+The default is 1.9.
+Property: "Synaptics Pointer Inertia Motion"
+.TP
+.BI "Option \*qPointerInertiaMinDistance\*q \*q" float \*q
+Minimum finger travel in mm required to start pointer inertia.
+The default is 3.1.
+Property: "Synaptics Pointer Inertia Motion"
+.TP
+.BI "Option \*qPointerInertiaLiftTailRatio\*q \*q" float \*q
+Ratio used to identify and trim a slower motion tail caused by lifting the
+finger. Valid values are between 0 and 1.
+The default is 0.45.
+Property: "Synaptics Pointer Inertia Motion"
+.TP
+.BI "Option \*qPointerInertiaMinTouchTime\*q \*q" integer \*q
+Minimum duration in milliseconds of a touch that may start pointer inertia.
+The default is 130.
+Property: "Synaptics Pointer Inertia Timing"
+.TP
+.BI "Option \*qPointerInertiaVelocityStaleTime\*q \*q" integer \*q
+Maximum age in milliseconds of samples used to estimate release velocity.
+The default is 150.
+Property: "Synaptics Pointer Inertia Timing"
+.TP
+.BI "Option \*qPointerInertiaStopTouchTime\*q \*q" integer \*q
+Touch duration in milliseconds required to stop active pointer inertia.
+The stop touch is excluded from tap and click processing.
+The default is 56.
+Property: "Synaptics Pointer Inertia Timing"
+.TP
+.BI "Option \*qPointerInertiaRetouchArmTime\*q \*q" integer \*q
+Delay in milliseconds after release before a retouch may stop inertia.
+This filters false retouches produced while lifting the finger.
+The default is 200.
+Property: "Synaptics Pointer Inertia Timing"
+.TP
+.BI "Option \*qPointerInertiaMaxDuration\*q \*q" integer \*q
+Maximum pointer inertia duration in milliseconds.
+0 disables the duration limit and is the default.
+Property: "Synaptics Pointer Inertia Timing"
+.TP
+.BI "Option \*qPointerInertiaVelocitySamples\*q \*q" integer \*q
+Number of recent hardware samples used to estimate release velocity.
+The default is 8.
+Property: "Synaptics Pointer Inertia Sampling"
+.TP
+.BI "Option \*qPointerInertiaTailSamples\*q \*q" integer \*q
+Number of final hardware samples checked for lift slowdown.
+The default is 10.
+Property: "Synaptics Pointer Inertia Sampling"
+.TP
+.BI "Option \*qPointerInertiaDebug\*q \*q" boolean \*q
+Log pointer inertia start, rejection, retouch, and stop decisions to the
+X.Org log.
+The default is false.
+Property: "Synaptics Pointer Inertia Debug"
+.TP
 .BI "Option \*qSingleTapTimeout\*q \*q" integer \*q
 Timeout after a tap to recognize it as a single tap.
 Property: "Synaptics Tap Durations"
