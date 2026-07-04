@@ -23,6 +23,19 @@ The extension includes:
 See [POINTER-INERTIA.md](POINTER-INERTIA.md) for build instructions, property
 descriptions, examples, and safety notes.
 
+For a guided installation on Debian or MX Linux:
+
+```sh
+git clone https://github.com/rumenvsimeonov-afk/xf86-input-synaptics-pointer-inertia.git
+cd xf86-input-synaptics-pointer-inertia
+./install-pointer-inertia.sh
+sudo reboot
+```
+
+The installer builds against the local X.Org ABI, saves the existing driver
+module, installs the new module, and enables pointer inertia. Restore the
+previous module with `./install-pointer-inertia.sh --uninstall`.
+
 The pointer inertia extension was implemented by OpenAI Codex at the request
 of Rumen V. Simeonov, who defined the required behavior and performed
 practical testing on Dell touchpad hardware. The implementation of the

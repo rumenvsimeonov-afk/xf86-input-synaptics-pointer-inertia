@@ -27,6 +27,33 @@ sudo apt-get install build-essential autoconf automake libtool pkgconf \
   xserver-xorg-input-synaptics
 ```
 
+## Guided installation
+
+On Debian or MX Linux, the installation script handles the dependencies,
+build, backup, module installation, and X.Org configuration:
+
+```sh
+git clone https://github.com/rumenvsimeonov-afk/xf86-input-synaptics-pointer-inertia.git
+cd xf86-input-synaptics-pointer-inertia
+./install-pointer-inertia.sh
+sudo reboot
+```
+
+Useful modes:
+
+```sh
+./install-pointer-inertia.sh --build-only
+./install-pointer-inertia.sh --no-deps
+./install-pointer-inertia.sh --uninstall
+```
+
+The script never restarts the graphical session automatically. It preserves
+the first driver module that it replaces in:
+
+```text
+/var/lib/xf86-input-synaptics-pointer-inertia/
+```
+
 ## Build
 
 ```sh
