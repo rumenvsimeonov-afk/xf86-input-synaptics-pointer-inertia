@@ -241,6 +241,8 @@ typedef struct _SynapticsParameters {
     int pointer_inertia_max_duration; /* Maximum inertia duration in ms, 0 is unlimited */
     int pointer_inertia_velocity_samples; /* Samples used for release velocity */
     int pointer_inertia_tail_samples; /* Samples checked for lift slowdown */
+    Bool pointer_inertia_restart_after_stop; /* Same touch may start inertia again */
+    Bool pointer_inertia_edge_scroll_exit; /* Allow edge-scroll to pointer transition */
     Bool pointer_inertia_debug; /* Log start, reject, and stop decisions */
 } SynapticsParameters;
 
@@ -274,6 +276,7 @@ struct _SynapticsPrivateRec {
         Bool tracking;
         Bool eligible;
         Bool disqualified;
+        Bool edge_scroll_pending;
         Bool active;
         double velocity_x;      /* Touchpad coordinate units per second */
         double velocity_y;

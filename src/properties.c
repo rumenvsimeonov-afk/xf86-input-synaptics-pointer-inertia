@@ -97,6 +97,7 @@ Atom prop_pointer_inertia = 0;
 Atom prop_pointer_inertia_motion = 0;
 Atom prop_pointer_inertia_timing = 0;
 Atom prop_pointer_inertia_sampling = 0;
+Atom prop_pointer_inertia_behavior = 0;
 Atom prop_pointer_inertia_debug = 0;
 Atom prop_product_id = 0;
 Atom prop_device_node = 0;
@@ -414,6 +415,12 @@ InitDeviceProperties(InputInfoPtr pInfo)
     values[1] = para->pointer_inertia_tail_samples;
     prop_pointer_inertia_sampling =
         InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_SAMPLING, 32, 2,
+                 values);
+
+    values[0] = para->pointer_inertia_restart_after_stop;
+    values[1] = para->pointer_inertia_edge_scroll_exit;
+    prop_pointer_inertia_behavior =
+        InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_BEHAVIOR, 8, 2,
                  values);
 
     prop_pointer_inertia_debug =
@@ -919,6 +926,20 @@ SetProperty(DeviceIntPtr dev, Atom property, XIPropertyValuePtr prop,
 
         para->pointer_inertia_velocity_samples = sampling[0];
         para->pointer_inertia_tail_samples = sampling[1];
+    }
+    else if (property == prop_pointer_inertia_behavior) {
+        CARD8 *behavior;
+
+        if (prop->size != 2 || prop->format != 8 ||
+            prop->type != XA_INTEGER)
+            return BadMatch;
+
+        behavior = (CARD8 *) prop->data;
+        if (behavior[0] > 1 || behavior[1] > 1)
+            return BadValue;
+
+        para->pointer_inertia_restart_after_stop = behavior[0];
+        para->pointer_inertia_edge_scroll_exit = behavior[1];
     }
     else if (property == prop_pointer_inertia_debug) {
         CARD8 enabled;

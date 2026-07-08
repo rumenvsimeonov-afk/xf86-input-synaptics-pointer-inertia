@@ -168,6 +168,31 @@ Defaults:
 
 The sum cannot exceed the internal 100-sample history.
 
+### Synaptics Pointer Inertia Behavior
+
+Two boolean values:
+
+1. `restart_after_stop`: after a confirmed touch stops active inertia, the
+   same still-down finger can continue normal pointer movement and may start
+   new inertia on release.
+2. `edge_scroll_exit`: a touch that begins in an edge-scroll zone may start
+   pointer inertia only if it leaves all edge-scroll zones before release.
+   Releasing inside a scroll zone remains normal Synaptics scrolling.
+
+Defaults:
+
+```text
+1  1
+```
+
+Example disabling the edge-scroll handoff:
+
+```sh
+xinput set-prop "TOUCHPAD NAME" \
+  "Synaptics Pointer Inertia Behavior" \
+  1 0
+```
+
 ### Synaptics Pointer Inertia Debug
 
 One boolean value. When enabled, start, rejection, trimming, retouch, and stop
@@ -202,6 +227,8 @@ Section "InputClass"
     Option "PointerInertiaMaxDuration" "0"
     Option "PointerInertiaVelocitySamples" "8"
     Option "PointerInertiaTailSamples" "10"
+    Option "PointerInertiaRestartAfterStop" "on"
+    Option "PointerInertiaEdgeScrollExit" "on"
     Option "PointerInertiaDebug" "off"
 EndSection
 ```
@@ -215,7 +242,9 @@ The following rules are intentional and are not optional tuning controls:
 - A retouch used to stop inertia is excluded from tap and click processing.
 - A short likely-false retouch is ignored.
 - After a confirmed stop, the same finger can continue normal pointer motion
-  without first being released.
+  and may start fresh inertia on release.
+- A movement that begins in an edge-scroll zone is treated as scrolling unless
+  it leaves the scroll zone before release.
 - Motion blocked by a screen edge is stopped through visible-pointer
   feedback.
 

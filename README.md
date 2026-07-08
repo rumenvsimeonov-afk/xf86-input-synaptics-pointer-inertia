@@ -9,6 +9,11 @@ touchpad driver. The original driver behavior is unchanged unless the
 `PointerInertia` option or the `Synaptics Pointer Inertia` XInput property is
 enabled.
 
+In practical testing on Dell touchpad hardware, the tuned defaults give smooth
+laptop-style pointer inertia comparable to good vendor Windows touchpad
+drivers, while keeping the original Synaptics scroll inertia and gesture
+handling in place.
+
 The extension includes:
 
 * release velocity estimation from a dedicated motion history;
@@ -16,7 +21,10 @@ The extension includes:
 * time-based exponential decay with fractional X/Y accumulation;
 * suppression after clicks, drags, scrolling, and multitouch;
 * confirmed retouch handling that cannot generate a tap or click;
-* continued movement with the same finger after a confirmed inertia stop;
+* continued movement and renewed inertia with the same finger after a
+  confirmed inertia stop;
+* optional handoff from edge-scroll zones to pointer inertia after the finger
+  leaves the scroll zone;
 * visible-pointer feedback to stop blocked motion at screen edges;
 * runtime configuration through `xinput set-prop`.
 

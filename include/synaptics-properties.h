@@ -172,6 +172,9 @@
 /* 32 bit (INTEGER, 2 values): velocity and lift-tail sample counts */
 #define SYNAPTICS_PROP_POINTER_INERTIA_SAMPLING "Synaptics Pointer Inertia Sampling"
 
+/* 8 bit (BOOL, 2 values): restart after stop and edge-scroll exit */
+#define SYNAPTICS_PROP_POINTER_INERTIA_BEHAVIOR "Synaptics Pointer Inertia Behavior"
+
 /* 8 bit (BOOL, 1 value): pointer inertia decision logging */
 #define SYNAPTICS_PROP_POINTER_INERTIA_DEBUG "Synaptics Pointer Inertia Debug"
 

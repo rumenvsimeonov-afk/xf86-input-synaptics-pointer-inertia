@@ -500,6 +500,19 @@ Number of final hardware samples checked for lift slowdown.
 The default is 10.
 Property: "Synaptics Pointer Inertia Sampling"
 .TP
+.BI "Option \*qPointerInertiaRestartAfterStop\*q \*q" boolean \*q
+Allow the same still-down finger that stopped active pointer inertia to
+continue normal pointer movement and start new inertia on release.
+The default is true.
+Property: "Synaptics Pointer Inertia Behavior"
+.TP
+.BI "Option \*qPointerInertiaEdgeScrollExit\*q \*q" boolean \*q
+Allow a touch that began in an edge-scroll zone to start pointer inertia if it
+leaves all edge-scroll zones before release. A release inside a scroll zone
+remains normal Synaptics scrolling.
+The default is true.
+Property: "Synaptics Pointer Inertia Behavior"
+.TP
 .BI "Option \*qPointerInertiaDebug\*q \*q" boolean \*q
 Log pointer inertia start, rejection, retouch, and stop decisions to the
 X.Org log.

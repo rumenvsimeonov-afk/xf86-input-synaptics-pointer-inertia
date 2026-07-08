@@ -782,6 +782,10 @@ set_default_parameters(InputInfoPtr pInfo)
         xf86SetIntOption(opts, "PointerInertiaVelocitySamples", 8);
     pars->pointer_inertia_tail_samples =
         xf86SetIntOption(opts, "PointerInertiaTailSamples", 10);
+    pars->pointer_inertia_restart_after_stop =
+        xf86SetBoolOption(opts, "PointerInertiaRestartAfterStop", TRUE);
+    pars->pointer_inertia_edge_scroll_exit =
+        xf86SetBoolOption(opts, "PointerInertiaEdgeScrollExit", TRUE);
     pars->pointer_inertia_debug =
         xf86SetBoolOption(opts, "PointerInertiaDebug", FALSE);
     pars->press_motion_min_factor =
@@ -2230,6 +2234,10 @@ pointer_inertia_push_sample(SynapticsPrivate *priv, int x, int y, CARD32 now)
         double dx = (x - previous->x) / (double) para->resolution_horiz;
         double dy = (y - previous->y) / (double) para->resolution_vert;
 
+        if (previous->x == x && previous->y == y &&
+            previous->millis == now)
+            return;
+
         priv->pointer_inertia.total_distance += hypot(dx, dy);
     }
 
@@ -2296,6 +2304,7 @@ pointer_inertia_begin_touch(SynapticsPrivate *priv,
     priv->pointer_inertia.tracking = TRUE;
     priv->pointer_inertia.eligible = FALSE;
     priv->pointer_inertia.disqualified = FALSE;
+    priv->pointer_inertia.edge_scroll_pending = FALSE;
     pointer_inertia_push_sample(priv, hw->x, hw->y, now);
 }
 
@@ -2589,6 +2598,16 @@ pointer_inertia_handoff_touch(InputInfoPtr pInfo,
     priv->move_hist[0].millis = now;
     priv->count_packet_finger = 1;
     priv->prevFingers = hw->numFingers;
+
+    if (priv->synpara.pointer_inertia_restart_after_stop) {
+        pointer_inertia_begin_touch(priv, hw, now);
+        priv->pointer_inertia.eligible = TRUE;
+        POINTER_INERTIA_LOG(pInfo, priv,
+                            "restart tracking from confirmed retouch\n");
+    }
+    else {
+        priv->pointer_inertia.tracking = FALSE;
+    }
 }
 
 /*
@@ -3592,7 +3611,21 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
     if (priv->pointer_inertia.touch_state == POINTER_INERTIA_TOUCH_HANDOFF) {
         suppress_gestures = TRUE;
         suppress_normal_motion = FALSE;
+
+        if (para->pointer_inertia_restart_after_stop &&
+            finger >= FS_TOUCHED && priv->pointer_inertia.tracking) {
+            if (!from_timer)
+                pointer_inertia_push_sample(priv, hw->x, hw->y, now);
+            priv->pointer_inertia.eligible = TRUE;
+            if (hw->numFingers != 1 || !inside_active_area ||
+                hw->left || hw->middle || hw->right)
+                priv->pointer_inertia.disqualified = TRUE;
+        }
+
         if (touch_released) {
+            if (para->pointer_inertia_restart_after_stop &&
+                priv->pointer_inertia.tracking)
+                pointer_inertia_try_start(pInfo, now);
             priv->pointer_inertia.touch_state = POINTER_INERTIA_TOUCH_NONE;
             SetTapState(priv, TS_START, now);
             SetMovingState(priv, MS_FALSE, now);
@@ -3639,28 +3672,58 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
 
     if (para->pointer_inertia &&
         priv->pointer_inertia.touch_state == POINTER_INERTIA_TOUCH_NONE) {
-        if (touch_started)
+        Bool edge_scroll_active =
+            priv->vert_scroll_edge_on || priv->horiz_scroll_edge_on;
+        Bool unsafe_gesture =
+            hw->numFingers != 1 || !inside_active_area ||
+            priv->vert_scroll_twofinger_on ||
+            priv->horiz_scroll_twofinger_on || priv->circ_scroll_on ||
+            hw->left || hw->middle || hw->right ||
+            priv->tap_state == TS_DRAG ||
+            priv->tap_state == TS_CLICKPAD_MOVE ||
+            priv->tap_button_state == TBS_BUTTON_DOWN;
+
+        if (touch_started) {
             pointer_inertia_begin_touch(priv, hw, now);
+            if (para->pointer_inertia_edge_scroll_exit &&
+                edge_scroll_active) {
+                priv->pointer_inertia.edge_scroll_pending = TRUE;
+                POINTER_INERTIA_LOG(pInfo, priv,
+                                    "edge-scroll origin pending\n");
+            }
+        }
         else if (finger >= FS_TOUCHED &&
-                 priv->pointer_inertia.tracking && !from_timer)
-            pointer_inertia_push_sample(priv, hw->x, hw->y, now);
+                 priv->pointer_inertia.tracking && !from_timer) {
+            if (priv->pointer_inertia.edge_scroll_pending) {
+                if (unsafe_gesture)
+                    priv->pointer_inertia.disqualified = TRUE;
+                if (!edge_scroll_active &&
+                    !priv->pointer_inertia.disqualified) {
+                    pointer_inertia_begin_touch(priv, hw, now);
+                    priv->pointer_inertia.eligible = TRUE;
+                    stop_coasting(priv);
+                    POINTER_INERTIA_LOG(pInfo, priv,
+                                        "edge-scroll exited, pointer tracking started\n");
+                }
+            }
+            else {
+                pointer_inertia_push_sample(priv, hw->x, hw->y, now);
+            }
+        }
 
         if (finger >= FS_TOUCHED && priv->pointer_inertia.tracking) {
-            if (hw->numFingers != 1 || !inside_active_area ||
-                priv->vert_scroll_edge_on || priv->horiz_scroll_edge_on ||
-                priv->vert_scroll_twofinger_on ||
-                priv->horiz_scroll_twofinger_on || priv->circ_scroll_on ||
-                hw->left || hw->middle || hw->right ||
-                priv->tap_state == TS_DRAG ||
-                priv->tap_state == TS_CLICKPAD_MOVE ||
-                priv->tap_button_state == TBS_BUTTON_DOWN)
+            if (unsafe_gesture ||
+                (edge_scroll_active &&
+                 !priv->pointer_inertia.edge_scroll_pending))
                 priv->pointer_inertia.disqualified = TRUE;
-            else if (priv->tap_state == TS_MOVE)
+            else if (!priv->pointer_inertia.edge_scroll_pending &&
+                     priv->tap_state == TS_MOVE)
                 priv->pointer_inertia.eligible = TRUE;
         }
 
         if (touch_released && priv->pointer_inertia.tracking) {
-            if (priv->tap_state != TS_START)
+            if (priv->pointer_inertia.edge_scroll_pending ||
+                priv->tap_state != TS_START)
                 priv->pointer_inertia.disqualified = TRUE;
             pointer_inertia_try_start(pInfo, now);
         }
