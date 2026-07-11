@@ -179,6 +179,8 @@ if [ ! -f "$CONFIG_TARGET" ]; then
         "$CONFIG_SOURCE" "$CONFIG_TARGET"
 else
     printf 'Keeping the existing configuration: %s\n' "$CONFIG_TARGET"
+    printf 'Review conf/%s for newer tuned defaults if upgrading.\n' \
+        "$CONFIG_NAME"
 fi
 
 printf '\nInstallation completed successfully.\n'

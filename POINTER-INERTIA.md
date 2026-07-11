@@ -118,7 +118,7 @@ Six floating-point values:
 Defaults:
 
 ```text
-7.7  1.3  1658  1.9  3.1  0.45
+3.1  0.88  1658  1.9  0.75  0.45
 ```
 
 Example with easier inertia startup:
@@ -126,7 +126,7 @@ Example with easier inertia startup:
 ```sh
 xinput set-prop "TOUCHPAD NAME" \
   "Synaptics Pointer Inertia Motion" \
-  5.0 1.3 1658 1.9 2.0 0.45
+  2.5 0.88 1658 1.9 0.5 0.45
 ```
 
 ### Synaptics Pointer Inertia Timing
@@ -142,15 +142,15 @@ Five integer values in milliseconds:
 Defaults:
 
 ```text
-130  150  56  200  0
+50  150  24  200  0
 ```
 
-Example with a shorter minimum touch:
+Example with a longer minimum touch:
 
 ```sh
 xinput set-prop "TOUCHPAD NAME" \
   "Synaptics Pointer Inertia Timing" \
-  80 150 56 200 0
+  80 150 24 200 0
 ```
 
 ### Synaptics Pointer Inertia Sampling
@@ -193,10 +193,35 @@ xinput set-prop "TOUCHPAD NAME" \
   1 0
 ```
 
+### Synaptics Pointer Inertia ClickGen TapTime
+
+One integer value in milliseconds:
+
+1. `clickgen_tap_time`: maximum duration of a stop touch that may generate
+   the configured one-finger tap button after stopping active pointer inertia.
+
+Defaults:
+
+```text
+128
+```
+
+Set this value to `0` to disable stop-touch click generation. Values below
+5 ms are also treated as disabled. A generated click is allowed only for a
+short, clean one-finger stop touch: movement beyond `Synaptics Tap Move`,
+physical buttons, multitouch, or `TouchpadOff` tap suppression prevent it.
+Longer stop touches only stop pointer inertia.
+
+```sh
+xinput set-prop "TOUCHPAD NAME" \
+  "Synaptics Pointer Inertia ClickGen TapTime" 0
+```
+
 ### Synaptics Pointer Inertia Debug
 
-One boolean value. When enabled, start, rejection, trimming, retouch, and stop
-decisions are written to the X.Org log.
+One boolean value. When enabled, start, rejection, trimming, retouch, click
+generation, and stop decisions are written to the X.Org log. Gesture/click
+rejections include diagnostic reason flags.
 
 ```sh
 xinput set-prop "TOUCHPAD NAME" \
@@ -214,24 +239,43 @@ Section "InputClass"
     MatchIsTouchpad "on"
     MatchDriver "synaptics"
     Option "PointerInertia" "on"
-    Option "PointerInertiaMinVelocity" "7.7"
-    Option "PointerInertiaStartMultiplier" "1.3"
+    Option "PointerInertiaMinVelocity" "3.1"
+    Option "PointerInertiaStartMultiplier" "0.88"
     Option "PointerInertiaDecayTime" "1658"
     Option "PointerInertiaStopVelocity" "1.9"
-    Option "PointerInertiaMinDistance" "3.1"
+    Option "PointerInertiaMinDistance" "0.75"
     Option "PointerInertiaLiftTailRatio" "0.45"
-    Option "PointerInertiaMinTouchTime" "130"
+    Option "PointerInertiaMinTouchTime" "50"
     Option "PointerInertiaVelocityStaleTime" "150"
-    Option "PointerInertiaStopTouchTime" "56"
+    Option "PointerInertiaStopTouchTime" "24"
     Option "PointerInertiaRetouchArmTime" "200"
     Option "PointerInertiaMaxDuration" "0"
     Option "PointerInertiaVelocitySamples" "8"
     Option "PointerInertiaTailSamples" "10"
     Option "PointerInertiaRestartAfterStop" "on"
     Option "PointerInertiaEdgeScrollExit" "on"
+    Option "PointerInertiaClickGenTapTime" "128"
     Option "PointerInertiaDebug" "off"
 EndSection
 ```
+
+The guided installer preserves an existing
+`/etc/X11/xorg.conf.d/99-synaptics-pointer-inertia.conf` instead of
+overwriting local tuning. When upgrading from an older release, update that
+file manually or use the runtime `~/.xsessionrc` example below.
+
+## Runtime X Session Tuning
+
+If you prefer runtime tuning with `xinput`, add commands to `~/.xsessionrc`.
+This is useful while experimenting because values can be changed without
+reinstalling the driver. A compact example is provided in:
+
+```text
+examples/xsessionrc-pointer-inertia
+```
+
+Replace `TOUCHPAD NAME` in that file with the exact device name reported by
+`xinput list --name-only`.
 
 ## Safety behavior
 
@@ -239,8 +283,11 @@ The following rules are intentional and are not optional tuning controls:
 
 - A click, drag, scroll operation, or multitouch gesture disqualifies the
   current touch from starting pointer inertia.
-- A retouch used to stop inertia is excluded from tap and click processing.
+- A retouch used to stop inertia is excluded from normal tap and click
+  processing.
 - A short likely-false retouch is ignored.
+- A short clean stop touch may optionally generate the configured one-finger
+  tap button; set `PointerInertiaClickGenTapTime` to `0` to disable this.
 - After a confirmed stop, the same finger can continue normal pointer motion
   and may start fresh inertia on release.
 - A movement that begins in an edge-scroll zone is treated as scrolling unless

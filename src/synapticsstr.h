@@ -243,6 +243,7 @@ typedef struct _SynapticsParameters {
     int pointer_inertia_tail_samples; /* Samples checked for lift slowdown */
     Bool pointer_inertia_restart_after_stop; /* Same touch may start inertia again */
     Bool pointer_inertia_edge_scroll_exit; /* Allow edge-scroll to pointer transition */
+    int pointer_inertia_clickgen_tap_time; /* Stop-touch tap time for click generation */
     Bool pointer_inertia_debug; /* Log start, reject, and stop decisions */
 } SynapticsParameters;
 
@@ -276,6 +277,7 @@ struct _SynapticsPrivateRec {
         Bool tracking;
         Bool eligible;
         Bool disqualified;
+        unsigned int disqualify_reasons;
         Bool edge_scroll_pending;
         Bool active;
         double velocity_x;      /* Touchpad coordinate units per second */
@@ -289,6 +291,8 @@ struct _SynapticsPrivateRec {
         CARD32 stop_touch_started_millis;
         int stop_touch_x;
         int stop_touch_y;
+        Bool stop_touch_moved;
+        Bool stop_touch_disqualified;
         int last_emitted_dx;
         int last_emitted_dy;
         int sprite_x;

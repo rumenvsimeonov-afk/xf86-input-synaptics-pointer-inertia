@@ -20,7 +20,8 @@ The extension includes:
 * lift-tail filtering;
 * time-based exponential decay with fractional X/Y accumulation;
 * suppression after clicks, drags, scrolling, and multitouch;
-* confirmed retouch handling that cannot generate a tap or click;
+* confirmed retouch handling that suppresses accidental taps and clicks;
+* optional click generation from a short deliberate stop touch;
 * continued movement and renewed inertia with the same finger after a
   confirmed inertia stop;
 * optional handoff from edge-scroll zones to pointer inertia after the finger
@@ -30,6 +31,9 @@ The extension includes:
 
 See [POINTER-INERTIA.md](POINTER-INERTIA.md) for build instructions, property
 descriptions, examples, and safety notes.
+
+A runtime tuning example for `~/.xsessionrc` is provided in
+[`examples/xsessionrc-pointer-inertia`](examples/xsessionrc-pointer-inertia).
 
 For a guided installation on Debian or MX Linux:
 
@@ -43,6 +47,11 @@ sudo reboot
 The installer builds against the local X.Org ABI, saves the existing driver
 module, installs the new module, and enables pointer inertia. Restore the
 previous module with `./install-pointer-inertia.sh --uninstall`.
+
+When upgrading an existing installation, the installer preserves any existing
+`/etc/X11/xorg.conf.d/99-synaptics-pointer-inertia.conf`. Review
+`POINTER-INERTIA.md` or the example `~/.xsessionrc` if you want the latest
+tuned runtime values.
 
 The pointer inertia extension was implemented by OpenAI Codex at the request
 of Rumen V. Simeonov, who defined the required behavior and performed

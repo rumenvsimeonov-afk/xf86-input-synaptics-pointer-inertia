@@ -124,6 +124,20 @@ typedef struct {
             xf86IDrvMsg((pInfo), X_INFO, "Pointer inertia: " __VA_ARGS__); \
     } while (0)
 
+#define POINTER_INERTIA_CLICKGEN_DISABLE_MS 5
+
+#define POINTER_INERTIA_REJECT_MULTIFINGER    (1u << 0)
+#define POINTER_INERTIA_REJECT_OUTSIDE_AREA   (1u << 1)
+#define POINTER_INERTIA_REJECT_EDGE_SCROLL    (1u << 2)
+#define POINTER_INERTIA_REJECT_TWOFINGER      (1u << 3)
+#define POINTER_INERTIA_REJECT_CIRCULAR       (1u << 4)
+#define POINTER_INERTIA_REJECT_BUTTON         (1u << 5)
+#define POINTER_INERTIA_REJECT_DRAG           (1u << 6)
+#define POINTER_INERTIA_REJECT_CLICKPAD_MOVE  (1u << 7)
+#define POINTER_INERTIA_REJECT_TAP_BUTTON     (1u << 8)
+#define POINTER_INERTIA_REJECT_EDGE_PENDING   (1u << 9)
+#define POINTER_INERTIA_REJECT_TAP_STATE      (1u << 10)
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -757,23 +771,23 @@ set_default_parameters(InputInfoPtr pInfo)
     pars->pointer_inertia =
         xf86SetBoolOption(opts, "PointerInertia", FALSE);
     pars->pointer_inertia_min_velocity =
-        xf86SetRealOption(opts, "PointerInertiaMinVelocity", 7.7);
+        xf86SetRealOption(opts, "PointerInertiaMinVelocity", 3.1);
     pars->pointer_inertia_start_multiplier =
-        xf86SetRealOption(opts, "PointerInertiaStartMultiplier", 1.3);
+        xf86SetRealOption(opts, "PointerInertiaStartMultiplier", 0.88);
     pars->pointer_inertia_decay_time =
         xf86SetRealOption(opts, "PointerInertiaDecayTime", 1658.0);
     pars->pointer_inertia_stop_velocity =
         xf86SetRealOption(opts, "PointerInertiaStopVelocity", 1.9);
     pars->pointer_inertia_min_distance =
-        xf86SetRealOption(opts, "PointerInertiaMinDistance", 3.1);
+        xf86SetRealOption(opts, "PointerInertiaMinDistance", 0.75);
     pars->pointer_inertia_lift_tail_ratio =
         xf86SetRealOption(opts, "PointerInertiaLiftTailRatio", 0.45);
     pars->pointer_inertia_min_touch_time =
-        xf86SetIntOption(opts, "PointerInertiaMinTouchTime", 130);
+        xf86SetIntOption(opts, "PointerInertiaMinTouchTime", 50);
     pars->pointer_inertia_velocity_stale_time =
         xf86SetIntOption(opts, "PointerInertiaVelocityStaleTime", 150);
     pars->pointer_inertia_stop_touch_time =
-        xf86SetIntOption(opts, "PointerInertiaStopTouchTime", 56);
+        xf86SetIntOption(opts, "PointerInertiaStopTouchTime", 24);
     pars->pointer_inertia_retouch_arm_time =
         xf86SetIntOption(opts, "PointerInertiaRetouchArmTime", 200);
     pars->pointer_inertia_max_duration =
@@ -786,6 +800,8 @@ set_default_parameters(InputInfoPtr pInfo)
         xf86SetBoolOption(opts, "PointerInertiaRestartAfterStop", TRUE);
     pars->pointer_inertia_edge_scroll_exit =
         xf86SetBoolOption(opts, "PointerInertiaEdgeScrollExit", TRUE);
+    pars->pointer_inertia_clickgen_tap_time =
+        xf86SetIntOption(opts, "PointerInertiaClickGenTapTime", 128);
     pars->pointer_inertia_debug =
         xf86SetBoolOption(opts, "PointerInertiaDebug", FALSE);
     pars->press_motion_min_factor =
@@ -2222,6 +2238,45 @@ pointer_inertia_clear_history(SynapticsPrivate *priv)
 }
 
 static void
+pointer_inertia_mark_disqualified(SynapticsPrivate *priv,
+                                  unsigned int reasons)
+{
+    priv->pointer_inertia.disqualified = TRUE;
+    priv->pointer_inertia.disqualify_reasons |= reasons;
+}
+
+static unsigned int
+pointer_inertia_current_reject_reasons(SynapticsPrivate *priv,
+                                       const struct SynapticsHwState *hw,
+                                       Bool inside_active_area,
+                                       Bool include_edge_scroll)
+{
+    unsigned int reasons = 0;
+
+    if (hw->numFingers != 1)
+        reasons |= POINTER_INERTIA_REJECT_MULTIFINGER;
+    if (!inside_active_area)
+        reasons |= POINTER_INERTIA_REJECT_OUTSIDE_AREA;
+    if (include_edge_scroll &&
+        (priv->vert_scroll_edge_on || priv->horiz_scroll_edge_on))
+        reasons |= POINTER_INERTIA_REJECT_EDGE_SCROLL;
+    if (priv->vert_scroll_twofinger_on || priv->horiz_scroll_twofinger_on)
+        reasons |= POINTER_INERTIA_REJECT_TWOFINGER;
+    if (priv->circ_scroll_on)
+        reasons |= POINTER_INERTIA_REJECT_CIRCULAR;
+    if (hw->left || hw->middle || hw->right)
+        reasons |= POINTER_INERTIA_REJECT_BUTTON;
+    if (priv->tap_state == TS_DRAG)
+        reasons |= POINTER_INERTIA_REJECT_DRAG;
+    if (priv->tap_state == TS_CLICKPAD_MOVE)
+        reasons |= POINTER_INERTIA_REJECT_CLICKPAD_MOVE;
+    if (priv->tap_button_state == TBS_BUTTON_DOWN)
+        reasons |= POINTER_INERTIA_REJECT_TAP_BUTTON;
+
+    return reasons;
+}
+
+static void
 pointer_inertia_push_sample(SynapticsPrivate *priv, int x, int y, CARD32 now)
 {
     SynapticsParameters *para = &priv->synpara;
@@ -2304,6 +2359,7 @@ pointer_inertia_begin_touch(SynapticsPrivate *priv,
     priv->pointer_inertia.tracking = TRUE;
     priv->pointer_inertia.eligible = FALSE;
     priv->pointer_inertia.disqualified = FALSE;
+    priv->pointer_inertia.disqualify_reasons = 0;
     priv->pointer_inertia.edge_scroll_pending = FALSE;
     pointer_inertia_push_sample(priv, hw->x, hw->y, now);
 }
@@ -2350,7 +2406,34 @@ pointer_inertia_try_start(InputInfoPtr pInfo, CARD32 now)
     if (priv->pointer_inertia.disqualified ||
         !priv->pointer_inertia.eligible) {
         POINTER_INERTIA_LOG(pInfo, priv,
-                            "reject reason=gesture_or_click\n");
+                            "reject reason=gesture_or_click eligible=%d disqualified=%d flags=0x%x mf=%d outside=%d edge=%d twofinger=%d circ=%d button=%d drag=%d clickpad=%d tapbtn=%d edge_pending=%d tap_state=%d tap_state_id=%d tap_button_state=%d\n",
+                            priv->pointer_inertia.eligible,
+                            priv->pointer_inertia.disqualified,
+                            priv->pointer_inertia.disqualify_reasons,
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_MULTIFINGER),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_OUTSIDE_AREA),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_EDGE_SCROLL),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_TWOFINGER),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_CIRCULAR),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_BUTTON),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_DRAG),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_CLICKPAD_MOVE),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_TAP_BUTTON),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_EDGE_PENDING),
+                            !!(priv->pointer_inertia.disqualify_reasons &
+                               POINTER_INERTIA_REJECT_TAP_STATE),
+                            priv->tap_state,
+                            priv->tap_button_state);
         return FALSE;
     }
     if ((CARD32) (now - priv->pointer_inertia.touch_start_millis) <
@@ -2436,8 +2519,12 @@ pointer_inertia_try_start(InputInfoPtr pInfo, CARD32 now)
                   velocity_y / para->resolution_vert);
     if (speed < para->pointer_inertia_min_velocity) {
         POINTER_INERTIA_LOG(pInfo, priv,
-                            "reject reason=velocity speed=%.3f min=%.3f\n",
-                            speed, para->pointer_inertia_min_velocity);
+                            "reject reason=velocity speed=%.3f min=%.3f dx=%d dy=%d duration=%u total=%.3f history=%d start=%d end=%d\n",
+                            speed, para->pointer_inertia_min_velocity,
+                            summary.dx, summary.dy,
+                            summary.duration_millis,
+                            priv->pointer_inertia.total_distance,
+                            priv->pointer_inertia.history_count, start, end);
         return FALSE;
     }
 
@@ -3302,6 +3389,73 @@ post_button_click(const InputInfoPtr pInfo, const int button)
 }
 
 static void
+pointer_inertia_update_stop_touch(InputInfoPtr pInfo,
+                                  const struct SynapticsHwState *hw,
+                                  Bool inside_active_area)
+{
+    SynapticsPrivate *priv = (SynapticsPrivate *) pInfo->private;
+    SynapticsParameters *para = &priv->synpara;
+
+    if (hw->numFingers != 1 || !inside_active_area ||
+        hw->left || hw->middle || hw->right)
+        priv->pointer_inertia.stop_touch_disqualified = TRUE;
+
+    if (priv->pointer_inertia.stop_touch_moved)
+        return;
+
+    if (abs(hw->x - priv->pointer_inertia.stop_touch_x) >= para->tap_move ||
+        abs(hw->y - priv->pointer_inertia.stop_touch_y) >= para->tap_move)
+        priv->pointer_inertia.stop_touch_moved = TRUE;
+}
+
+static Bool
+pointer_inertia_stop_touch_click_candidate(InputInfoPtr pInfo, CARD32 now)
+{
+    SynapticsPrivate *priv = (SynapticsPrivate *) pInfo->private;
+    SynapticsParameters *para = &priv->synpara;
+    CARD32 touch_duration =
+        now - priv->pointer_inertia.stop_touch_started_millis;
+
+    if (para->pointer_inertia_clickgen_tap_time <
+        POINTER_INERTIA_CLICKGEN_DISABLE_MS)
+        return FALSE;
+    if (para->touchpad_off == TOUCHPAD_TAP_OFF)
+        return FALSE;
+    if (para->tap_action[F1_TAP] <= 0)
+        return FALSE;
+    if (touch_duration >
+        (CARD32) para->pointer_inertia_clickgen_tap_time)
+        return FALSE;
+    if (priv->pointer_inertia.stop_touch_moved ||
+        priv->pointer_inertia.stop_touch_disqualified)
+        return FALSE;
+
+    return TRUE;
+}
+
+static Bool
+pointer_inertia_maybe_post_stop_click(InputInfoPtr pInfo, CARD32 now)
+{
+    SynapticsPrivate *priv = (SynapticsPrivate *) pInfo->private;
+    int button;
+
+    if (!pointer_inertia_stop_touch_click_candidate(pInfo, now))
+        return FALSE;
+
+    button = clamp(priv->synpara.tap_action[F1_TAP], 0, SYN_MAX_BUTTONS);
+    if (button <= 0)
+        return FALSE;
+
+    post_button_click(pInfo, button);
+    POINTER_INERTIA_LOG(pInfo, priv,
+                        "stop retouch generated click button=%d duration=%u\n",
+                        button,
+                        now -
+                        priv->pointer_inertia.stop_touch_started_millis);
+    return TRUE;
+}
+
+static void
 post_scroll_events(const InputInfoPtr pInfo)
 {
     SynapticsPrivate *priv = (SynapticsPrivate *) (pInfo->private);
@@ -3561,6 +3715,8 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
         priv->pointer_inertia.stop_touch_started_millis = now;
         priv->pointer_inertia.stop_touch_x = hw->x;
         priv->pointer_inertia.stop_touch_y = hw->y;
+        priv->pointer_inertia.stop_touch_moved = FALSE;
+        priv->pointer_inertia.stop_touch_disqualified = FALSE;
         SetTapState(priv, TS_START, now);
         SetMovingState(priv, MS_FALSE, now);
         priv->count_packet_finger = 0;
@@ -3571,18 +3727,29 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
         suppress_gestures = TRUE;
         suppress_normal_motion = TRUE;
 
+        if (finger >= FS_TOUCHED)
+            pointer_inertia_update_stop_touch(pInfo, hw,
+                                              inside_active_area);
+
         if (touch_released) {
             CARD32 touch_duration =
                 now - priv->pointer_inertia.stop_touch_started_millis;
             CARD32 release_age =
                 now - priv->pointer_inertia.released_millis;
+            Bool click_candidate =
+                pointer_inertia_stop_touch_click_candidate(pInfo, now);
+            Bool confirmed_retouch =
+                touch_duration >=
+                (CARD32) para->pointer_inertia_stop_touch_time ||
+                click_candidate;
 
             if (priv->pointer_inertia.active &&
-                touch_duration >=
-                (CARD32) para->pointer_inertia_stop_touch_time &&
+                confirmed_retouch &&
                 release_age >=
-                (CARD32) para->pointer_inertia_retouch_arm_time)
+                (CARD32) para->pointer_inertia_retouch_arm_time) {
                 pointer_inertia_stop(pInfo, "confirmed_retouch_release");
+                pointer_inertia_maybe_post_stop_click(pInfo, now);
+            }
             else
                 POINTER_INERTIA_LOG(pInfo, priv,
                                     "retouch ignored duration=%u\n",
@@ -3612,18 +3779,28 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
         suppress_gestures = TRUE;
         suppress_normal_motion = FALSE;
 
+        if (finger >= FS_TOUCHED)
+            pointer_inertia_update_stop_touch(pInfo, hw,
+                                              inside_active_area);
+
         if (para->pointer_inertia_restart_after_stop &&
             finger >= FS_TOUCHED && priv->pointer_inertia.tracking) {
+            unsigned int reject_reasons =
+                pointer_inertia_current_reject_reasons(priv, hw,
+                                                       inside_active_area,
+                                                       FALSE);
             if (!from_timer)
                 pointer_inertia_push_sample(priv, hw->x, hw->y, now);
             priv->pointer_inertia.eligible = TRUE;
-            if (hw->numFingers != 1 || !inside_active_area ||
-                hw->left || hw->middle || hw->right)
-                priv->pointer_inertia.disqualified = TRUE;
+            if (reject_reasons)
+                pointer_inertia_mark_disqualified(priv, reject_reasons);
         }
 
         if (touch_released) {
-            if (para->pointer_inertia_restart_after_stop &&
+            Bool posted_click =
+                pointer_inertia_maybe_post_stop_click(pInfo, now);
+            if (!posted_click &&
+                para->pointer_inertia_restart_after_stop &&
                 priv->pointer_inertia.tracking)
                 pointer_inertia_try_start(pInfo, now);
             priv->pointer_inertia.touch_state = POINTER_INERTIA_TOUCH_NONE;
@@ -3674,14 +3851,12 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
         priv->pointer_inertia.touch_state == POINTER_INERTIA_TOUCH_NONE) {
         Bool edge_scroll_active =
             priv->vert_scroll_edge_on || priv->horiz_scroll_edge_on;
+        unsigned int unsafe_reasons =
+            pointer_inertia_current_reject_reasons(priv, hw,
+                                                   inside_active_area,
+                                                   FALSE);
         Bool unsafe_gesture =
-            hw->numFingers != 1 || !inside_active_area ||
-            priv->vert_scroll_twofinger_on ||
-            priv->horiz_scroll_twofinger_on || priv->circ_scroll_on ||
-            hw->left || hw->middle || hw->right ||
-            priv->tap_state == TS_DRAG ||
-            priv->tap_state == TS_CLICKPAD_MOVE ||
-            priv->tap_button_state == TBS_BUTTON_DOWN;
+            unsafe_reasons != 0;
 
         if (touch_started) {
             pointer_inertia_begin_touch(priv, hw, now);
@@ -3696,7 +3871,8 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
                  priv->pointer_inertia.tracking && !from_timer) {
             if (priv->pointer_inertia.edge_scroll_pending) {
                 if (unsafe_gesture)
-                    priv->pointer_inertia.disqualified = TRUE;
+                    pointer_inertia_mark_disqualified(priv,
+                                                      unsafe_reasons);
                 if (!edge_scroll_active &&
                     !priv->pointer_inertia.disqualified) {
                     pointer_inertia_begin_touch(priv, hw, now);
@@ -3712,19 +3888,25 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
         }
 
         if (finger >= FS_TOUCHED && priv->pointer_inertia.tracking) {
-            if (unsafe_gesture ||
-                (edge_scroll_active &&
-                 !priv->pointer_inertia.edge_scroll_pending))
-                priv->pointer_inertia.disqualified = TRUE;
-            else if (!priv->pointer_inertia.edge_scroll_pending &&
-                     priv->tap_state == TS_MOVE)
+            if (unsafe_gesture)
+                pointer_inertia_mark_disqualified(priv, unsafe_reasons);
+            if (edge_scroll_active &&
+                !priv->pointer_inertia.edge_scroll_pending)
+                pointer_inertia_mark_disqualified(priv,
+                                                  POINTER_INERTIA_REJECT_EDGE_SCROLL);
+            if (!priv->pointer_inertia.disqualified &&
+                !priv->pointer_inertia.edge_scroll_pending &&
+                priv->tap_state == TS_MOVE)
                 priv->pointer_inertia.eligible = TRUE;
         }
 
         if (touch_released && priv->pointer_inertia.tracking) {
-            if (priv->pointer_inertia.edge_scroll_pending ||
-                priv->tap_state != TS_START)
-                priv->pointer_inertia.disqualified = TRUE;
+            if (priv->pointer_inertia.edge_scroll_pending)
+                pointer_inertia_mark_disqualified(priv,
+                                                  POINTER_INERTIA_REJECT_EDGE_PENDING);
+            if (priv->tap_state != TS_START)
+                pointer_inertia_mark_disqualified(priv,
+                                                  POINTER_INERTIA_REJECT_TAP_STATE);
             pointer_inertia_try_start(pInfo, now);
         }
     }

@@ -175,6 +175,9 @@
 /* 8 bit (BOOL, 2 values): restart after stop and edge-scroll exit */
 #define SYNAPTICS_PROP_POINTER_INERTIA_BEHAVIOR "Synaptics Pointer Inertia Behavior"
 
+/* 32 bit (INTEGER, 1 value): tap time for click generation while stopping inertia */
+#define SYNAPTICS_PROP_POINTER_INERTIA_CLICKGEN_TAP_TIME "Synaptics Pointer Inertia ClickGen TapTime"
+
 /* 8 bit (BOOL, 1 value): pointer inertia decision logging */
 #define SYNAPTICS_PROP_POINTER_INERTIA_DEBUG "Synaptics Pointer Inertia Debug"
 

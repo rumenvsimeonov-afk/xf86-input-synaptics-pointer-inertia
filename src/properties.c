@@ -98,6 +98,7 @@ Atom prop_pointer_inertia_motion = 0;
 Atom prop_pointer_inertia_timing = 0;
 Atom prop_pointer_inertia_sampling = 0;
 Atom prop_pointer_inertia_behavior = 0;
+Atom prop_pointer_inertia_clickgen_tap_time = 0;
 Atom prop_pointer_inertia_debug = 0;
 Atom prop_product_id = 0;
 Atom prop_device_node = 0;
@@ -422,6 +423,10 @@ InitDeviceProperties(InputInfoPtr pInfo)
     prop_pointer_inertia_behavior =
         InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_BEHAVIOR, 8, 2,
                  values);
+
+    prop_pointer_inertia_clickgen_tap_time =
+        InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_CLICKGEN_TAP_TIME,
+                 32, 1, &para->pointer_inertia_clickgen_tap_time);
 
     prop_pointer_inertia_debug =
         InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_DEBUG, 8, 1,
@@ -940,6 +945,19 @@ SetProperty(DeviceIntPtr dev, Atom property, XIPropertyValuePtr prop,
 
         para->pointer_inertia_restart_after_stop = behavior[0];
         para->pointer_inertia_edge_scroll_exit = behavior[1];
+    }
+    else if (property == prop_pointer_inertia_clickgen_tap_time) {
+        INT32 tap_time;
+
+        if (prop->size != 1 || prop->format != 32 ||
+            prop->type != XA_INTEGER)
+            return BadMatch;
+
+        tap_time = *(INT32 *) prop->data;
+        if (tap_time < 0)
+            return BadValue;
+
+        para->pointer_inertia_clickgen_tap_time = tap_time;
     }
     else if (property == prop_pointer_inertia_debug) {
         CARD8 enabled;

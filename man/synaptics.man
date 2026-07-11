@@ -433,12 +433,12 @@ Property: "Synaptics Pointer Inertia"
 .TP
 .BI "Option \*qPointerInertiaMinVelocity\*q \*q" float \*q
 Minimum release velocity in mm/s required to start pointer inertia.
-The default is 7.7.
+The default is 3.1.
 Property: "Synaptics Pointer Inertia Motion"
 .TP
 .BI "Option \*qPointerInertiaStartMultiplier\*q \*q" float \*q
 Multiplier applied to the estimated release velocity.
-The default is 1.3.
+The default is 0.88.
 Property: "Synaptics Pointer Inertia Motion"
 .TP
 .BI "Option \*qPointerInertiaDecayTime\*q \*q" float \*q
@@ -454,7 +454,7 @@ Property: "Synaptics Pointer Inertia Motion"
 .TP
 .BI "Option \*qPointerInertiaMinDistance\*q \*q" float \*q
 Minimum finger travel in mm required to start pointer inertia.
-The default is 3.1.
+The default is 0.75.
 Property: "Synaptics Pointer Inertia Motion"
 .TP
 .BI "Option \*qPointerInertiaLiftTailRatio\*q \*q" float \*q
@@ -465,7 +465,7 @@ Property: "Synaptics Pointer Inertia Motion"
 .TP
 .BI "Option \*qPointerInertiaMinTouchTime\*q \*q" integer \*q
 Minimum duration in milliseconds of a touch that may start pointer inertia.
-The default is 130.
+The default is 50.
 Property: "Synaptics Pointer Inertia Timing"
 .TP
 .BI "Option \*qPointerInertiaVelocityStaleTime\*q \*q" integer \*q
@@ -476,7 +476,7 @@ Property: "Synaptics Pointer Inertia Timing"
 .BI "Option \*qPointerInertiaStopTouchTime\*q \*q" integer \*q
 Touch duration in milliseconds required to stop active pointer inertia.
 The stop touch is excluded from tap and click processing.
-The default is 56.
+The default is 24.
 Property: "Synaptics Pointer Inertia Timing"
 .TP
 .BI "Option \*qPointerInertiaRetouchArmTime\*q \*q" integer \*q
@@ -513,9 +513,16 @@ remains normal Synaptics scrolling.
 The default is true.
 Property: "Synaptics Pointer Inertia Behavior"
 .TP
+.BI "Option \*qPointerInertiaClickGenTapTime\*q \*q" integer \*q
+Maximum duration in milliseconds of a clean stop touch that may generate the
+configured one-finger tap button after stopping active pointer inertia.
+0 disables stop-touch click generation; values below 5 are also treated as
+disabled. The default is 128.
+Property: "Synaptics Pointer Inertia ClickGen TapTime"
+.TP
 .BI "Option \*qPointerInertiaDebug\*q \*q" boolean \*q
-Log pointer inertia start, rejection, retouch, and stop decisions to the
-X.Org log.
+Log pointer inertia start, rejection, retouch, click generation, and stop
+decisions to the X.Org log.
 The default is false.
 Property: "Synaptics Pointer Inertia Debug"
 .TP
