@@ -99,6 +99,8 @@ Atom prop_pointer_inertia_timing = 0;
 Atom prop_pointer_inertia_sampling = 0;
 Atom prop_pointer_inertia_behavior = 0;
 Atom prop_pointer_inertia_clickgen_tap_time = 0;
+Atom prop_pointer_inertia_drag_lock = 0;
+Atom prop_pointer_inertia_drag_lock_cancel = 0;
 Atom prop_pointer_inertia_debug = 0;
 Atom prop_product_id = 0;
 Atom prop_device_node = 0;
@@ -428,6 +430,18 @@ InitDeviceProperties(InputInfoPtr pInfo)
         InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_CLICKGEN_TAP_TIME,
                  32, 1, &para->pointer_inertia_clickgen_tap_time);
 
+    values[0] = para->pointer_inertia_drag_lock;
+    values[1] = para->pointer_inertia_drag_lock_timeout;
+    values[2] = para->pointer_inertia_drag_lock_cancel;
+    prop_pointer_inertia_drag_lock =
+        InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_DRAG_LOCK, 32, 3,
+                 values);
+
+    values[0] = 0;
+    prop_pointer_inertia_drag_lock_cancel =
+        InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_DRAG_LOCK_CANCEL,
+                 8, 1, values);
+
     prop_pointer_inertia_debug =
         InitAtom(pInfo->dev, SYNAPTICS_PROP_POINTER_INERTIA_DEBUG, 8, 1,
                  &para->pointer_inertia_debug);
@@ -669,10 +683,18 @@ SetProperty(DeviceIntPtr dev, Atom property, XIPropertyValuePtr prop,
         para->tap_and_drag_gesture = gestures[0];
     }
     else if (property == prop_lockdrags) {
+        CARD8 locked_drags;
+
         if (prop->size != 1 || prop->format != 8 || prop->type != XA_INTEGER)
             return BadMatch;
 
-        para->locked_drags = *(BOOL *) prop->data;
+        locked_drags = *(CARD8 *) prop->data;
+        if (locked_drags > 1)
+            return BadValue;
+        if (para->pointer_inertia_drag_lock && locked_drags)
+            return BadValue;
+
+        para->locked_drags = locked_drags;
     }
     else if (property == prop_lockdrags_time) {
         if (prop->size != 1 || prop->format != 32 || prop->type != XA_INTEGER)
@@ -958,6 +980,38 @@ SetProperty(DeviceIntPtr dev, Atom property, XIPropertyValuePtr prop,
             return BadValue;
 
         para->pointer_inertia_clickgen_tap_time = tap_time;
+    }
+    else if (property == prop_pointer_inertia_drag_lock) {
+        INT32 *drag_lock;
+
+        if (prop->size != 3 || prop->format != 32 ||
+            prop->type != XA_INTEGER)
+            return BadMatch;
+
+        drag_lock = (INT32 *) prop->data;
+        if (drag_lock[0] < 0 || drag_lock[0] > 1 ||
+            drag_lock[1] < 0 ||
+            drag_lock[2] < 0 || drag_lock[2] > 1)
+            return BadValue;
+
+        para->pointer_inertia_drag_lock = drag_lock[0];
+        para->pointer_inertia_drag_lock_timeout = drag_lock[1];
+        para->pointer_inertia_drag_lock_cancel = drag_lock[2];
+        if (para->pointer_inertia_drag_lock)
+            para->locked_drags = FALSE;
+    }
+    else if (property == prop_pointer_inertia_drag_lock_cancel) {
+        CARD8 cancel;
+
+        if (prop->size != 1 || prop->format != 8 || prop->type != XA_INTEGER)
+            return BadMatch;
+
+        cancel = *(CARD8 *) prop->data;
+        if (cancel > 1)
+            return BadValue;
+
+        if (!checkonly && cancel)
+            SynapticsPointerInertiaCancelDragLock(pInfo);
     }
     else if (property == prop_pointer_inertia_debug) {
         CARD8 enabled;

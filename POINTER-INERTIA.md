@@ -8,7 +8,8 @@ pointer inertia is explicitly enabled.
 
 The pointer inertia extension was implemented by OpenAI Codex at the request
 of Rumen V. Simeonov. Rumen specified the required interaction behavior and
-performed practical testing and tuning on Dell touchpad hardware.
+performed practical testing and tuning on Dell touchpad hardware and an
+HP EliteBook 830 G6.
 
 The underlying Synaptics driver is an X.Org project with many original
 contributors. It remains covered by the MIT license in `COPYING`.
@@ -217,6 +218,57 @@ xinput set-prop "TOUCHPAD NAME" \
   "Synaptics Pointer Inertia ClickGen TapTime" 0
 ```
 
+### Synaptics Pointer Inertia Drag Lock
+
+Three integer values:
+
+1. `enabled`: `1` enables the custom pointer-inertia-aware locked drag.
+2. `timeout_ms`: maximum locked-drag duration in milliseconds; `0` disables
+   automatic release.
+3. `cancel_touch`: when enabled, right button, middle button, or two-finger
+   touch cancels the custom locked drag.
+
+Defaults:
+
+```text
+0  0  1
+```
+
+When this feature is enabled, the driver disables the original
+`Synaptics Locked Drags` implementation internally. The custom implementation
+keeps the virtual drag button held while pointer inertia is active, allows
+drag inertia on the first release after locked drag starts, and allows a
+continued touch to stop inertia and resume normal locked dragging.
+
+```sh
+xinput set-prop "TOUCHPAD NAME" \
+  "Synaptics Locked Drags" 0
+xinput set-prop "TOUCHPAD NAME" \
+  "Synaptics Pointer Inertia Drag Lock" 1 0 1
+```
+
+### Synaptics Pointer Inertia Drag Lock Cancel
+
+One 8-bit boolean control property. Setting it to `1` asks the driver to
+cancel an active custom locked drag. It is intended for helper programs rather
+than normal manual tuning.
+
+```sh
+xinput set-prop "TOUCHPAD NAME" \
+  "Synaptics Pointer Inertia Drag Lock Cancel" 1
+```
+
+The included `pointer-inertia-esc-cancel` helper listens for raw Escape key
+presses through XInput2 and toggles this property without stealing Escape from
+applications:
+
+```sh
+pointer-inertia-esc-cancel &
+```
+
+Use `-n "TOUCHPAD NAME"` to bind it to a specific device, or `-v` for a small
+diagnostic log.
+
 ### Synaptics Pointer Inertia Debug
 
 One boolean value. When enabled, start, rejection, trimming, retouch, click
@@ -255,6 +307,9 @@ Section "InputClass"
     Option "PointerInertiaRestartAfterStop" "on"
     Option "PointerInertiaEdgeScrollExit" "on"
     Option "PointerInertiaClickGenTapTime" "128"
+    Option "PointerInertiaDragLock" "off"
+    Option "PointerInertiaDragLockTimeout" "0"
+    Option "PointerInertiaDragLockCancel" "on"
     Option "PointerInertiaDebug" "off"
 EndSection
 ```
@@ -292,6 +347,11 @@ The following rules are intentional and are not optional tuning controls:
   and may start fresh inertia on release.
 - A movement that begins in an edge-scroll zone is treated as scrolling unless
   it leaves the scroll zone before release.
+- When custom drag lock is enabled, the original Synaptics locked-drags
+  feature is disabled to avoid two independent drag state machines.
+- Custom drag lock cancellation moves the pointer to screen coordinate `0,0`
+  before releasing the virtual button. This avoids accepting a drop at the
+  current pointer location in file managers and editors tested so far.
 - Motion blocked by a screen edge is stopped through visible-pointer
   feedback.
 

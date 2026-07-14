@@ -14,6 +14,9 @@ laptop-style pointer inertia comparable to good vendor Windows touchpad
 drivers, while keeping the original Synaptics scroll inertia and gesture
 handling in place.
 
+The current tuned version has also been practically tested on an HP EliteBook
+830 G6.
+
 The extension includes:
 
 * release velocity estimation from a dedicated motion history;
@@ -26,6 +29,8 @@ The extension includes:
   confirmed inertia stop;
 * optional handoff from edge-scroll zones to pointer inertia after the finger
   leaves the scroll zone;
+* optional pointer-inertia-aware locked drag with inertial drag continuation,
+  secondary-touch cancellation, and an external Escape-key cancellation helper;
 * visible-pointer feedback to stop blocked motion at screen edges;
 * runtime configuration through `xinput set-prop`.
 
@@ -55,9 +60,10 @@ tuned runtime values.
 
 The pointer inertia extension was implemented by OpenAI Codex at the request
 of Rumen V. Simeonov, who defined the required behavior and performed
-practical testing on Dell touchpad hardware. The implementation of the
-extension is Codex's work; the underlying Synaptics driver remains the work of
-its original X.Org contributors under the MIT license.
+practical testing on Dell touchpad hardware and an HP EliteBook 830 G6. The
+implementation of the extension is Codex's work; the underlying Synaptics
+driver remains the work of its original X.Org contributors under the MIT
+license.
 
 This extension is experimental and currently targets X.Org sessions. It does
 not add pointer inertia to libinput or Wayland.

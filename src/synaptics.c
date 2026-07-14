@@ -802,6 +802,14 @@ set_default_parameters(InputInfoPtr pInfo)
         xf86SetBoolOption(opts, "PointerInertiaEdgeScrollExit", TRUE);
     pars->pointer_inertia_clickgen_tap_time =
         xf86SetIntOption(opts, "PointerInertiaClickGenTapTime", 128);
+    pars->pointer_inertia_drag_lock =
+        xf86SetBoolOption(opts, "PointerInertiaDragLock", FALSE);
+    pars->pointer_inertia_drag_lock_timeout =
+        xf86SetIntOption(opts, "PointerInertiaDragLockTimeout", 0);
+    pars->pointer_inertia_drag_lock_cancel =
+        xf86SetBoolOption(opts, "PointerInertiaDragLockCancel", TRUE);
+    if (pars->pointer_inertia_drag_lock)
+        pars->locked_drags = FALSE;
     pars->pointer_inertia_debug =
         xf86SetBoolOption(opts, "PointerInertiaDebug", FALSE);
     pars->press_motion_min_factor =
@@ -1950,6 +1958,7 @@ SetTapState(SynapticsPrivate * priv, enum TapState tap_state, CARD32 millis)
     case TS_START:
         priv->tap_button_state = TBS_BUTTON_UP;
         priv->tap_max_fingers = 0;
+        priv->pointer_inertia.drag_lock_active = FALSE;
         break;
     case TS_1:
         priv->tap_button_state = TBS_BUTTON_UP;
@@ -2001,14 +2010,182 @@ GetTimeOut(SynapticsPrivate * priv)
     case TS_2B:
         return para->tap_time_2;
     case TS_4:
+        if (priv->pointer_inertia.drag_lock_active &&
+            para->pointer_inertia_drag_lock) {
+            if (para->pointer_inertia_drag_lock_timeout > 0)
+                return para->pointer_inertia_drag_lock_timeout;
+            return -1;
+        }
         return para->locked_drag_time;
     default:
         return -1;              /* No timeout */
     }
 }
 
+static Bool
+pointer_inertia_drag_lock_cancel_touch(SynapticsPrivate *priv,
+                                       const struct SynapticsHwState *hw)
+{
+    if (!priv->synpara.pointer_inertia_drag_lock_cancel)
+        return FALSE;
+
+    return hw->right || hw->middle || hw->numFingers >= 2;
+}
+
+static Bool
+pointer_inertia_drag_lock_virtual_button_active(SynapticsPrivate *priv)
+{
+    return priv->synpara.pointer_inertia_drag_lock &&
+        priv->tap_button_state == TBS_BUTTON_DOWN &&
+        priv->tap_button > 0 &&
+        priv->tap_button <= SYN_MAX_BUTTONS;
+}
+
+static Bool
+pointer_inertia_drag_lock_sequence_active(SynapticsPrivate *priv)
+{
+    if (!pointer_inertia_drag_lock_virtual_button_active(priv))
+        return FALSE;
+
+    return priv->tap_state == TS_4 ||
+        priv->tap_state == TS_5 ||
+        priv->tap_state == TS_DRAG;
+}
+
+static Bool
+pointer_inertia_drag_lock_candidate_touch(SynapticsPrivate *priv)
+{
+    return pointer_inertia_drag_lock_virtual_button_active(priv) &&
+        priv->tap_state == TS_3;
+}
+
+static Bool
+pointer_inertia_drag_lock_drag_allowed(SynapticsPrivate *priv)
+{
+    return pointer_inertia_drag_lock_sequence_active(priv) &&
+        priv->tap_state == TS_DRAG;
+}
+
+static Bool
+pointer_inertia_drag_lock_release_allowed(SynapticsPrivate *priv)
+{
+    return pointer_inertia_drag_lock_sequence_active(priv) &&
+        priv->pointer_inertia.drag_lock_active &&
+        priv->tap_state == TS_4;
+}
+
+static void
+pointer_inertia_drag_lock_store_origin(InputInfoPtr pInfo)
+{
+    SynapticsPrivate *priv = pInfo->private;
+
+    miPointerGetPosition(pInfo->dev, &priv->pointer_inertia.drag_lock_origin_x,
+                         &priv->pointer_inertia.drag_lock_origin_y);
+    priv->pointer_inertia.drag_lock_origin_valid = TRUE;
+    priv->pointer_inertia.drag_lock_cancel_pending = FALSE;
+}
+
+static void
+pointer_inertia_drag_lock_clear_origin(SynapticsPrivate *priv)
+{
+    priv->pointer_inertia.drag_lock_origin_valid = FALSE;
+    priv->pointer_inertia.drag_lock_cancel_pending = FALSE;
+}
+
+static void
+pointer_inertia_drag_lock_suppress_buttons(SynapticsPrivate *priv,
+                                           struct SynapticsHwState *hw)
+{
+    hw->left = FALSE;
+    hw->middle = FALSE;
+    hw->right = FALSE;
+    priv->pointer_inertia.drag_lock_suppress_buttons = TRUE;
+}
+
+static void
+pointer_inertia_drag_lock_cancel(SynapticsPrivate *priv,
+                                 struct SynapticsHwState *hw)
+{
+    pointer_inertia_drag_lock_suppress_buttons(priv, hw);
+    priv->pointer_inertia.drag_lock_cancel_pending = TRUE;
+}
+
+static void
+pointer_inertia_drag_lock_cancel_timeout(SynapticsPrivate *priv)
+{
+    priv->pointer_inertia.drag_lock_cancel_pending = TRUE;
+}
+
+static void
+pointer_inertia_drag_lock_return_to_origin(InputInfoPtr pInfo)
+{
+    SynapticsPrivate *priv = pInfo->private;
+    ValuatorMask *mask;
+    int valuators[2];
+
+    if (!priv->pointer_inertia.drag_lock_cancel_pending)
+        return;
+
+    mask = valuator_mask_new(2);
+    if (!mask) {
+        pointer_inertia_drag_lock_clear_origin(priv);
+        return;
+    }
+
+    valuators[0] = 0;
+    valuators[1] = 0;
+
+    valuator_mask_set_range(mask, 0, 2, valuators);
+    QueuePointerEvents(pInfo->dev, MotionNotify, 0,
+                       POINTER_ABSOLUTE | POINTER_SCREEN | POINTER_NORAW,
+                       mask);
+    valuator_mask_free(&mask);
+
+    POINTER_INERTIA_LOG(pInfo, priv,
+                        "drag-lock cancel moved to x=%d y=%d\n",
+                        valuators[0], valuators[1]);
+
+    pointer_inertia_drag_lock_clear_origin(priv);
+}
+
+void
+SynapticsPointerInertiaCancelDragLock(InputInfoPtr pInfo)
+{
+    SynapticsPrivate *priv = pInfo->private;
+    CARD32 now = GetTimeInMillis();
+    int button = priv->tap_button;
+
+    if (!priv->synpara.pointer_inertia_drag_lock ||
+        !pointer_inertia_drag_lock_sequence_active(priv))
+        return;
+
+    POINTER_INERTIA_LOG(pInfo, priv,
+                        "external drag-lock cancel tap_state=%d active=%d last_buttons=0x%x\n",
+                        priv->tap_state, priv->pointer_inertia.drag_lock_active,
+                        priv->lastButtons);
+
+    priv->pointer_inertia.drag_lock_cancel_pending = TRUE;
+    pointer_inertia_drag_lock_return_to_origin(pInfo);
+
+    SetMovingState(priv, MS_FALSE, now);
+    SetTapState(priv, TS_START, now);
+
+    if (button > 0 && button <= SYN_MAX_BUTTONS) {
+        int mask = 1 << (button - 1);
+
+        if (priv->lastButtons & mask) {
+            xf86PostButtonEvent(pInfo->dev, FALSE, button, FALSE, 0, 0);
+            priv->lastButtons &= ~mask;
+        }
+    }
+
+    priv->tap_button = 0;
+    priv->pointer_inertia.drag_lock_suppress_buttons = FALSE;
+}
+
 static int
-HandleTapProcessing(SynapticsPrivate * priv, struct SynapticsHwState *hw,
+HandleTapProcessing(InputInfoPtr pInfo, SynapticsPrivate * priv,
+                    struct SynapticsHwState *hw,
                     CARD32 now, enum FingerState finger,
                     Bool inside_active_area)
 {
@@ -2045,8 +2222,9 @@ HandleTapProcessing(SynapticsPrivate * priv, struct SynapticsHwState *hw,
         if (priv->tap_max_fingers < hw->numFingers)
             priv->tap_max_fingers = hw->numFingers;
     timeout = GetTimeOut(priv);
-    timeleft = TIME_DIFF(priv->touch_on.millis + timeout, now);
-    is_timeout = timeleft <= 0;
+    timeleft = timeout >= 0 ?
+        TIME_DIFF(priv->touch_on.millis + timeout, now) : 0;
+    is_timeout = timeout >= 0 && timeleft <= 0;
 
  restart:
     switch (priv->tap_state) {
@@ -2092,14 +2270,20 @@ HandleTapProcessing(SynapticsPrivate * priv, struct SynapticsHwState *hw,
         }
         break;
     case TS_2A:
-        if (touch)
+        if (touch) {
+            if (para->pointer_inertia_drag_lock)
+                pointer_inertia_drag_lock_store_origin(pInfo);
             SetTapState(priv, TS_3, now);
+        }
         else if (is_timeout)
             SetTapState(priv, TS_SINGLETAP, now);
         break;
     case TS_2B:
-        if (touch)
+        if (touch) {
+            if (para->pointer_inertia_drag_lock)
+                pointer_inertia_drag_lock_store_origin(pInfo);
             SetTapState(priv, TS_3, now);
+        }
         else if (is_timeout)
             SetTapState(priv, TS_SINGLETAP, now);
         break;
@@ -2145,7 +2329,11 @@ HandleTapProcessing(SynapticsPrivate * priv, struct SynapticsHwState *hw,
             SetMovingState(priv, MS_TOUCHPAD_RELATIVE, now);
         if (release) {
             SetMovingState(priv, MS_FALSE, now);
-            if (para->locked_drags) {
+            if (para->pointer_inertia_drag_lock) {
+                SetTapState(priv, TS_4, now);
+                priv->pointer_inertia.drag_lock_active = TRUE;
+            }
+            else if (para->locked_drags) {
                 SetTapState(priv, TS_4, now);
             }
             else {
@@ -2154,6 +2342,23 @@ HandleTapProcessing(SynapticsPrivate * priv, struct SynapticsHwState *hw,
         }
         break;
     case TS_4:
+        if (priv->pointer_inertia.drag_lock_active &&
+            para->pointer_inertia_drag_lock) {
+            if (is_timeout) {
+                pointer_inertia_drag_lock_cancel_timeout(priv);
+                SetTapState(priv, TS_START, now);
+                goto restart;
+            }
+            if (pointer_inertia_drag_lock_cancel_touch(priv, hw)) {
+                pointer_inertia_drag_lock_cancel(priv, hw);
+                SetMovingState(priv, MS_FALSE, now);
+                SetTapState(priv, TS_START, now);
+            }
+            else if (touch) {
+                SetTapState(priv, TS_5, now);
+            }
+            break;
+        }
         if (is_timeout) {
             SetTapState(priv, TS_START, now);
             goto restart;
@@ -2162,6 +2367,24 @@ HandleTapProcessing(SynapticsPrivate * priv, struct SynapticsHwState *hw,
             SetTapState(priv, TS_5, now);
         break;
     case TS_5:
+        if (priv->pointer_inertia.drag_lock_active &&
+            para->pointer_inertia_drag_lock) {
+            if (pointer_inertia_drag_lock_cancel_touch(priv, hw)) {
+                pointer_inertia_drag_lock_cancel(priv, hw);
+                SetMovingState(priv, MS_FALSE, now);
+                SetTapState(priv, TS_START, now);
+            }
+            else if (is_timeout || move) {
+                SetTapState(priv, TS_DRAG, now);
+                goto restart;
+            }
+            else if (release) {
+                SetMovingState(priv, MS_FALSE, now);
+                pointer_inertia_drag_lock_clear_origin(priv);
+                SetTapState(priv, TS_START, now);
+            }
+            break;
+        }
         if (is_timeout || move) {
             SetTapState(priv, TS_DRAG, now);
             goto restart;
@@ -2266,11 +2489,14 @@ pointer_inertia_current_reject_reasons(SynapticsPrivate *priv,
         reasons |= POINTER_INERTIA_REJECT_CIRCULAR;
     if (hw->left || hw->middle || hw->right)
         reasons |= POINTER_INERTIA_REJECT_BUTTON;
-    if (priv->tap_state == TS_DRAG)
+    if (priv->tap_state == TS_DRAG &&
+        !pointer_inertia_drag_lock_drag_allowed(priv))
         reasons |= POINTER_INERTIA_REJECT_DRAG;
     if (priv->tap_state == TS_CLICKPAD_MOVE)
         reasons |= POINTER_INERTIA_REJECT_CLICKPAD_MOVE;
-    if (priv->tap_button_state == TBS_BUTTON_DOWN)
+    if (priv->tap_button_state == TBS_BUTTON_DOWN &&
+        !pointer_inertia_drag_lock_sequence_active(priv) &&
+        !pointer_inertia_drag_lock_candidate_touch(priv))
         reasons |= POINTER_INERTIA_REJECT_TAP_BUTTON;
 
     return reasons;
@@ -2382,6 +2608,7 @@ pointer_inertia_stop(InputInfoPtr pInfo, const char *reason)
     priv->pointer_inertia.sprite_valid = FALSE;
     priv->pointer_inertia.blocked_x_ticks = 0;
     priv->pointer_inertia.blocked_y_ticks = 0;
+    priv->pointer_inertia.drag_lock_inertia = FALSE;
 }
 
 static Bool
@@ -2398,11 +2625,13 @@ pointer_inertia_try_start(InputInfoPtr pInfo, CARD32 now)
     double velocity_x;
     double velocity_y;
     double speed;
+    Bool drag_lock_inertia;
 
     priv->pointer_inertia.tracking = FALSE;
 
     if (!para->pointer_inertia)
         return FALSE;
+    drag_lock_inertia = pointer_inertia_drag_lock_release_allowed(priv);
     if (priv->pointer_inertia.disqualified ||
         !priv->pointer_inertia.eligible) {
         POINTER_INERTIA_LOG(pInfo, priv,
@@ -2542,16 +2771,18 @@ pointer_inertia_try_start(InputInfoPtr pInfo, CARD32 now)
     priv->pointer_inertia.last_emitted_dy = 0;
     priv->pointer_inertia.blocked_x_ticks = 0;
     priv->pointer_inertia.blocked_y_ticks = 0;
+    priv->pointer_inertia.drag_lock_inertia = drag_lock_inertia;
     miPointerGetPosition(pInfo->dev, &priv->pointer_inertia.sprite_x,
                          &priv->pointer_inertia.sprite_y);
     priv->pointer_inertia.sprite_valid = TRUE;
     priv->pointer_inertia.active = TRUE;
 
     POINTER_INERTIA_LOG(pInfo, priv,
-                        "start speed=%.3f vx=%.3f vy=%.3f samples=%d\n",
+                        "start speed=%.3f vx=%.3f vy=%.3f samples=%d drag_lock=%d\n",
                         speed * para->pointer_inertia_start_multiplier,
                         priv->pointer_inertia.velocity_x,
-                        priv->pointer_inertia.velocity_y, velocity_samples);
+                        priv->pointer_inertia.velocity_y, velocity_samples,
+                        priv->pointer_inertia.drag_lock_inertia);
     return TRUE;
 }
 
@@ -3687,6 +3918,17 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
             priv->clickpad_click_millis = 0;
     }
 
+    if (priv->pointer_inertia.drag_lock_suppress_buttons) {
+        if (hw->left || hw->middle || hw->right) {
+            hw->left = FALSE;
+            hw->middle = FALSE;
+            hw->right = FALSE;
+        }
+        else {
+            priv->pointer_inertia.drag_lock_suppress_buttons = FALSE;
+        }
+    }
+
     /* now we know that these _coordinates_ aren't in the area.
        invalid are: x, y, z, numFingers, fingerWidth
        valid are: millis, left/right/middle/up/down/etc.
@@ -3711,16 +3953,27 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
     if (para->pointer_inertia && priv->pointer_inertia.active &&
         touch_started &&
         priv->pointer_inertia.touch_state == POINTER_INERTIA_TOUCH_NONE) {
-        priv->pointer_inertia.touch_state = POINTER_INERTIA_TOUCH_PENDING;
-        priv->pointer_inertia.stop_touch_started_millis = now;
-        priv->pointer_inertia.stop_touch_x = hw->x;
-        priv->pointer_inertia.stop_touch_y = hw->y;
-        priv->pointer_inertia.stop_touch_moved = FALSE;
-        priv->pointer_inertia.stop_touch_disqualified = FALSE;
-        SetTapState(priv, TS_START, now);
-        SetMovingState(priv, MS_FALSE, now);
-        priv->count_packet_finger = 0;
-        POINTER_INERTIA_LOG(pInfo, priv, "retouch pending\n");
+        if (priv->pointer_inertia.drag_lock_inertia &&
+            pointer_inertia_drag_lock_virtual_button_active(priv)) {
+            pointer_inertia_stop(pInfo, "drag_lock_retouch");
+            SetTapState(priv, TS_5, now);
+            SetMovingState(priv, MS_FALSE, now);
+            priv->count_packet_finger = 0;
+            POINTER_INERTIA_LOG(pInfo, priv,
+                                "drag-lock retouch handed to locked drag\n");
+        }
+        else {
+            priv->pointer_inertia.touch_state = POINTER_INERTIA_TOUCH_PENDING;
+            priv->pointer_inertia.stop_touch_started_millis = now;
+            priv->pointer_inertia.stop_touch_x = hw->x;
+            priv->pointer_inertia.stop_touch_y = hw->y;
+            priv->pointer_inertia.stop_touch_moved = FALSE;
+            priv->pointer_inertia.stop_touch_disqualified = FALSE;
+            SetTapState(priv, TS_START, now);
+            SetMovingState(priv, MS_FALSE, now);
+            priv->count_packet_finger = 0;
+            POINTER_INERTIA_LOG(pInfo, priv, "retouch pending\n");
+        }
     }
 
     if (priv->pointer_inertia.touch_state == POINTER_INERTIA_TOUCH_PENDING) {
@@ -3814,7 +4067,8 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
      * the dead area to reset the state. */
     if (!suppress_gestures) {
         timeleft =
-            HandleTapProcessing(priv, hw, now, finger, inside_active_area);
+            HandleTapProcessing(pInfo, priv, hw, now, finger,
+                                inside_active_area);
         if (timeleft > 0)
             delay = MIN(delay, timeleft);
     }
@@ -3896,7 +4150,8 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
                                                   POINTER_INERTIA_REJECT_EDGE_SCROLL);
             if (!priv->pointer_inertia.disqualified &&
                 !priv->pointer_inertia.edge_scroll_pending &&
-                priv->tap_state == TS_MOVE)
+                (priv->tap_state == TS_MOVE ||
+                 pointer_inertia_drag_lock_drag_allowed(priv)))
                 priv->pointer_inertia.eligible = TRUE;
         }
 
@@ -3904,7 +4159,8 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
             if (priv->pointer_inertia.edge_scroll_pending)
                 pointer_inertia_mark_disqualified(priv,
                                                   POINTER_INERTIA_REJECT_EDGE_PENDING);
-            if (priv->tap_state != TS_START)
+            if (priv->tap_state != TS_START &&
+                !pointer_inertia_drag_lock_release_allowed(priv))
                 pointer_inertia_mark_disqualified(priv,
                                                   POINTER_INERTIA_REJECT_TAP_STATE);
             pointer_inertia_try_start(pInfo, now);
@@ -3921,8 +4177,16 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
     if (priv->tap_button > 0 && priv->tap_button_state == TBS_BUTTON_DOWN)
         buttons |= 1 << (priv->tap_button - 1);
 
-    if (priv->pointer_inertia.active && buttons)
-        pointer_inertia_stop(pInfo, "button");
+    if (priv->pointer_inertia.active && buttons) {
+        int stop_buttons = buttons;
+
+        if (priv->pointer_inertia.drag_lock_inertia &&
+            priv->tap_button > 0 && priv->tap_button <= SYN_MAX_BUTTONS)
+            stop_buttons &= ~(1 << (priv->tap_button - 1));
+
+        if (stop_buttons)
+            pointer_inertia_stop(pInfo, "button");
+    }
 
     /* Post events */
     if (finger >= FS_TOUCHED && (dx || dy) && !ignore_motion &&
@@ -3947,6 +4211,8 @@ HandleState(InputInfoPtr pInfo, struct SynapticsHwState *hw, CARD32 now,
         post_button_click(pInfo, 3);
         priv->mid_emu_state = MBE_OFF;
     }
+
+    pointer_inertia_drag_lock_return_to_origin(pInfo);
 
     change = buttons ^ priv->lastButtons;
     while (change) {

@@ -244,6 +244,9 @@ typedef struct _SynapticsParameters {
     Bool pointer_inertia_restart_after_stop; /* Same touch may start inertia again */
     Bool pointer_inertia_edge_scroll_exit; /* Allow edge-scroll to pointer transition */
     int pointer_inertia_clickgen_tap_time; /* Stop-touch tap time for click generation */
+    Bool pointer_inertia_drag_lock; /* Custom locked drag handling */
+    int pointer_inertia_drag_lock_timeout; /* Custom locked drag timeout in ms */
+    Bool pointer_inertia_drag_lock_cancel; /* Cancel custom locked drag by secondary touch */
     Bool pointer_inertia_debug; /* Log start, reject, and stop decisions */
 } SynapticsParameters;
 
@@ -293,6 +296,13 @@ struct _SynapticsPrivateRec {
         int stop_touch_y;
         Bool stop_touch_moved;
         Bool stop_touch_disqualified;
+        Bool drag_lock_active;
+        Bool drag_lock_inertia;
+        Bool drag_lock_suppress_buttons;
+        Bool drag_lock_origin_valid;
+        Bool drag_lock_cancel_pending;
+        int drag_lock_origin_x;
+        int drag_lock_origin_y;
         int last_emitted_dx;
         int last_emitted_dy;
         int sprite_x;
@@ -378,5 +388,6 @@ struct _SynapticsPrivateRec {
 void InitDeviceProperties(InputInfoPtr pInfo);
 int SetProperty(DeviceIntPtr dev, Atom property, XIPropertyValuePtr prop,
                 BOOL checkonly);
+void SynapticsPointerInertiaCancelDragLock(InputInfoPtr pInfo);
 
 #endif                          /* _SYNAPTICSSTR_H_ */

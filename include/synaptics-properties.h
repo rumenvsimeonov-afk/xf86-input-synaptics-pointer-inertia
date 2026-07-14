@@ -178,6 +178,12 @@
 /* 32 bit (INTEGER, 1 value): tap time for click generation while stopping inertia */
 #define SYNAPTICS_PROP_POINTER_INERTIA_CLICKGEN_TAP_TIME "Synaptics Pointer Inertia ClickGen TapTime"
 
+/* 32 bit (INTEGER, 3 values): enabled, timeout ms, cancel touch enabled */
+#define SYNAPTICS_PROP_POINTER_INERTIA_DRAG_LOCK "Synaptics Pointer Inertia Drag Lock"
+
+/* 8 bit (BOOL, 1 value): trigger drag lock cancellation */
+#define SYNAPTICS_PROP_POINTER_INERTIA_DRAG_LOCK_CANCEL "Synaptics Pointer Inertia Drag Lock Cancel"
+
 /* 8 bit (BOOL, 1 value): pointer inertia decision logging */
 #define SYNAPTICS_PROP_POINTER_INERTIA_DEBUG "Synaptics Pointer Inertia Debug"
 

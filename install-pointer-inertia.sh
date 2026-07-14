@@ -87,6 +87,8 @@ if [ "$UNINSTALL" -eq 1 ]; then
         "${SUDO[@]}" rm -f "$CONFIG_TARGET"
     fi
 
+    "${SUDO[@]}" rm -f /usr/bin/pointer-inertia-esc-cancel
+
     printf '\nThe previous driver module was restored.\n'
     printf 'Restart the X.Org session or reboot to apply the change.\n'
     exit 0
@@ -143,6 +145,7 @@ printf 'Building with %s job(s)...\n' "$JOBS"
 make -C "$BUILD_DIR" -j"$JOBS"
 
 BUILT_MODULE="$BUILD_DIR/src/.libs/synaptics_drv.so"
+BUILT_ESC_HELPER="$BUILD_DIR/tools/pointer-inertia-esc-cancel"
 if [ ! -f "$BUILT_MODULE" ]; then
     printf 'The expected driver module was not produced: %s\n' \
         "$BUILT_MODULE" >&2
@@ -151,6 +154,9 @@ fi
 
 if [ "$BUILD_ONLY" -eq 1 ]; then
     printf '\nBuild completed successfully:\n%s\n' "$BUILT_MODULE"
+    if [ -x "$BUILT_ESC_HELPER" ]; then
+        printf '%s\n' "$BUILT_ESC_HELPER"
+    fi
     exit 0
 fi
 
@@ -173,6 +179,11 @@ fi
 printf 'Installing the pointer inertia driver...\n'
 "${SUDO[@]}" install -o root -g root -m 0644 \
     "$BUILT_MODULE" "$TARGET_MODULE"
+
+if [ -x "$BUILT_ESC_HELPER" ]; then
+    "${SUDO[@]}" install -o root -g root -m 0755 \
+        "$BUILT_ESC_HELPER" /usr/bin/pointer-inertia-esc-cancel
+fi
 
 if [ ! -f "$CONFIG_TARGET" ]; then
     "${SUDO[@]}" install -o root -g root -m 0644 \

@@ -18,7 +18,7 @@
 #  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 #  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-bin_PROGRAMS = synclient syndaemon
+bin_PROGRAMS = synclient syndaemon pointer-inertia-esc-cancel
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 AM_CFLAGS = $(CWARNFLAGS) $(XI_CFLAGS)
@@ -29,3 +29,5 @@ synclient_SOURCES = synclient.c
 syndaemon_SOURCES = syndaemon.c
 syndaemon_CFLAGS = $(AM_CFLAGS) $(XTST_CFLAGS)
 syndaemon_LDFLAGS = $(AM_LDFLAGS) $(XTST_LIBS)
+
+pointer_inertia_esc_cancel_SOURCES = pointer-inertia-esc-cancel.c

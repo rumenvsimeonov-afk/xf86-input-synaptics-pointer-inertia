@@ -15,6 +15,17 @@ xinput set-prop "$TOUCHPAD" "Synaptics Pointer Inertia Behavior" \
   1 1
 xinput set-prop "$TOUCHPAD" "Synaptics Pointer Inertia ClickGen TapTime" \
   128
+xinput set-prop "$TOUCHPAD" "Synaptics Locked Drags" 0
+xinput set-prop "$TOUCHPAD" "Synaptics Pointer Inertia Drag Lock" \
+  1 0 1
+xinput set-prop "$TOUCHPAD" "Synaptics Pointer Inertia Drag Lock Cancel" \
+  0
+xinput set-prop "$TOUCHPAD" "Synaptics Pointer Inertia Debug" 0
+
+if command -v pointer-inertia-esc-cancel >/dev/null 2>&1; then
+  pkill -u "$USER" -f '(^|/)pointer-inertia-esc-cancel( |$)' 2>/dev/null || true
+  pointer-inertia-esc-cancel -v >/tmp/pointer-inertia-esc-cancel.log 2>&1 &
+fi
 
 # Useful companion Synaptics settings for this tuning. They are not required
 # by the driver extension, but were used during practical testing.
